@@ -1,0 +1,27 @@
+{
+  "name": "Coolvarko Kft. — Építési Napló",
+  "short_name": "Coolvarko",
+  "description": "Napi építési napló rögzítése — brigád, tevékenységek, anyagok",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1014",
+  "theme_color": "#7ec800",
+  "orientation": "portrait",
+  "lang": "hu",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "screenshots": []
+}

@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="theme-color" content="#7ec800"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Coolvarko"/>
+  <meta name="description" content="Coolvarko Kft. — Építési Napló"/>
+  <title>Coolvarko Napló</title>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="icon-192.png"/>
+  <link rel="icon" href="icon-192.png"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet"/>
+
+  <!-- Firebase SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import {
+      getFirestore, collection, addDoc, deleteDoc, doc,
+      query, orderBy, onSnapshot, setDoc, getDoc
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import {
+      getStorage, ref, uploadBytes, getDownloadURL, deleteObject
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
+    // ══════════════════════════════════════════════════════════════
+    // !! FIREBASE KONFIGURÁCIÓ — IDE ÍROD BE A SAJÁTODAT !!
+    // Lépések: console.firebase.google.com → Projekt → Web app
+    // ══════════════════════════════════════════════════════════════
+    const firebaseConfig = {
+      apiKey: "AIzaSyDBUNmqnDZszO7tMS8kR8Y5UWAfFnXalzM",
+      authDomain: "coolvarko-kft.firebaseapp.com",
+      projectId: "coolvarko-kft",
+      storageBucket: "coolvarko-kft.firebasestorage.app",
+      messagingSenderId: "334119129410",
+      appId: "1:334119129410:web:430a7b2ec7f0f72ec4f8db"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+    const stor = getStorage(app);
+
+    // ─── DB helpers ───────────────────────────────────────────────
+    window.FB = {
+      // Napló
+      naploFigyel: (cb) => {
+        const q = query(collection(db,"naplo"), orderBy("datum","desc"));
+        return onSnapshot(q, snap => cb(snap.docs.map(d=>({id:d.id,...d.data()}))));
+      },
+      naploMent: (adat) => addDoc(collection(db,"naplo"), {...adat, rogzitve: new Date().toISOString()}),
+      naploTorol: (id) => deleteDoc(doc(db,"naplo",id)),
+
+      // Projektek
+      projektekFigyel: (cb) => onSnapshot(collection(db,"projektek"), snap =>
+        cb(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.nev?.localeCompare(b.nev)))),
+      projektMent: (adat) => addDoc(collection(db,"projektek"), {...adat, letrehozva: new Date().toISOString()}),
+      projektTorol: (id) => deleteDoc(doc(db,"projektek",id)),
+
+      // Dokumentumok
+      dokFigyel: (prjId, cb) => onSnapshot(collection(db,"projektek",prjId,"dokumentumok"),
+        snap => cb(snap.docs.map(d=>({id:d.id,...d.data()})))),
+      dokFeltolt: async (prjId, file) => {
+        const path = `projektek/${prjId}/${Date.now()}_${file.name}`;
+        const sRef = ref(stor, path);
+        await uploadBytes(sRef, file);
+        const url = await getDownloadURL(sRef);
+        await addDoc(collection(db,"projektek",prjId,"dokumentumok"), {
+          nev: file.name, meret: file.size, tipus: file.type,
+          url, path, feltoltve: new Date().toISOString()
+        });
+        return url;
+      },
+      dokTorol: async (prjId, docId, path) => {
+        await deleteDoc(doc(db,"projektek",prjId,"dokumentumok",docId));
+        try { await deleteObject(ref(stor, path)); } catch(e){}
+      },
+
+      // Admin beállítások
+      beallitasokLeker: async () => {
+        const d = await getDoc(doc(db,"beallitasok","admin"));
+        return d.exists() ? d.data() : {pin:"1234"};
+      },
+      beallitasokMent: (adat) => setDoc(doc(db,"beallitasok","admin"), adat),
+    };
+
+    // App indítása miután Firebase betöltött
+    document.dispatchEvent(new Event("firebase-ready"));
+  </script>
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0d1014;--s1:#161a22;--s2:#1e2430;--s3:#252c38;
+      --brd:#2a3244;--acc:#7ec800;--acd:#5a9200;--a2:#3b82f6;
+      --red:#ef4444;--grn:#22c55e;--amber:#f59e0b;
+      --txt:#e8eaf0;--t2:#8b93a8;--t3:#4a5268;--r:10px;
+    }
+    html,body{height:100%;overflow:hidden}
+    body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--txt);display:flex;justify-content:center}
+    #app{width:100%;max-width:480px;height:100dvh;display:flex;flex-direction:column;overflow:hidden;position:relative}
+    /* Header */
+    .hdr{background:var(--s1);border-bottom:3px solid var(--acc);padding:8px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px}
+    .hdr-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+    .hdr-date{font-size:11px;color:var(--t2);background:var(--s2);padding:4px 8px;border-radius:6px;white-space:nowrap}
+    .online-dot{width:7px;height:7px;border-radius:50%;background:var(--grn);flex-shrink:0}
+    .online-dot.off{background:var(--red)}
+    /* Nav */
+    .nav{display:flex;background:var(--s1);border-top:1px solid var(--brd);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom)}
+    .nb{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 2px 8px;border:none;background:none;color:var(--t3);cursor:pointer;font-size:9px;font-family:'Barlow',sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.5px;border-top:2px solid transparent;transition:color .15s}
+    .nb.on{color:var(--acc);border-top-color:var(--acc)}
+    .nb.adm{color:var(--t3)}.nb.adm.on{color:var(--amber);border-top-color:var(--amber)}
+    /* Content */
+    .cnt{flex:1;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch}
+    /* Cards */
+    .card{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:15px;margin-bottom:11px}
+    .ctit{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;letter-spacing:.5px;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+    .acc{color:var(--acc)}.ambc{color:var(--amber)}
+    /* Forms */
+    .fld{margin-bottom:11px}
+    .lbl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t2);margin-bottom:5px}
+    .inp,.sel,.ta{width:100%;background:var(--s2);border:1px solid var(--brd);border-radius:8px;color:var(--txt);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;transition:border-color .15s;appearance:none;-webkit-appearance:none}
+    .inp:focus,.sel:focus,.ta:focus{outline:none;border-color:var(--acc)}
+    .ta{resize:vertical;min-height:64px}
+    .sel{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b93a8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;padding-right:34px}
+    .r2{display:flex;gap:8px}.r2>*{flex:1}
+    /* Buttons */
+    .btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 16px;border-radius:8px;border:none;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;width:100%;transition:opacity .15s,transform .1s;-webkit-tap-highlight-color:transparent}
+    .btn:active{transform:scale(.97);opacity:.85}
+    .btn-p{background:var(--acc);color:#0d1014}
+    .btn-s{background:var(--s2);color:var(--txt);border:1px solid var(--brd)}
+    .btn-amb{background:var(--amber);color:#0d1014}
+    .btn-d{background:transparent;color:var(--red);border:1px solid rgba(239,68,68,.35);padding:5px 9px;width:auto;font-size:11px;border-radius:6px}
+    .btn-ic{width:auto;padding:9px 11px}
+    /* Wizard steps */
+    .steps{display:flex;gap:4px;margin-bottom:16px}
+    .step{flex:1;text-align:center;padding:6px 2px;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;text-transform:uppercase;background:var(--s1);color:var(--t3);border:1px solid var(--brd);transition:all .15s;-webkit-tap-highlight-color:transparent}
+    .step.on{background:var(--acc);color:#0d1014;border-color:var(--acc)}
+    .step.dn{border-color:var(--acd);color:var(--acd)}
+    /* Activity picker */
+    .srch-w{position:relative;margin-bottom:9px}
+    .srch-ic{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--t3);pointer-events:none}
+    .srch-w .inp{padding-left:33px}
+    .kath{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:var(--acc);margin:9px 0 4px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:4px 6px;border-radius:6px;-webkit-tap-highlight-color:transparent}
+    .kath:hover{background:rgba(126,200,0,.08)}
+    .karr{transition:transform .2s}.karr.op{transform:rotate(180deg)}
+    .pg{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:3px}
+    .pill{display:inline-flex;align-items:center;background:var(--s2);border:1px solid var(--brd);border-radius:20px;padding:4px 10px;font-size:12px;color:var(--t2);cursor:pointer;transition:all .12s;white-space:nowrap;-webkit-tap-highlight-color:transparent}
+    .pill.on{background:var(--acc);border-color:var(--acc);color:#0d1014;font-weight:700}
+    /* Brigád sor */
+    .brow{background:var(--s2);border-radius:8px;padding:10px;margin-bottom:7px;border:1px solid var(--brd)}
+    .brh{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+    /* Log entries */
+    .le{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:13px;margin-bottom:9px}
+    .leh{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:7px}
+    .lp{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--acc);text-transform:uppercase;letter-spacing:.5px}
+    .ld{font-size:12px;color:var(--t2);margin-top:1px}
+    .lt{display:inline-block;background:var(--s2);border-radius:4px;padding:2px 6px;font-size:12px;color:var(--t2);margin:2px}
+    .lt.w{color:var(--a2)}.lt.m{color:var(--grn)}.lt.r{color:var(--acc)}
+    /* Stats */
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px}
+    .stat{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:13px}
+    .sv{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:800;color:var(--acc);line-height:1}
+    .sl{font-size:11px;color:var(--t2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+    /* Misc */
+    .badge{display:inline-flex;align-items:center;justify-content:center;background:var(--acc);color:#0d1014;border-radius:99px;font-size:10px;font-weight:800;min-width:17px;height:17px;padding:0 4px}
+    .stit{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:19px;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;border-left:3px solid var(--acc);padding-left:9px}
+    .stit.amb{border-left-color:var(--amber)}
+    .divd{border:none;border-top:1px solid var(--brd);margin:13px 0}
+    .rb{background:rgba(126,200,0,.07);border:1px solid rgba(126,200,0,.22);border-radius:8px;padding:8px 11px;margin-bottom:7px;display:flex;align-items:center;justify-content:space-between}
+    .rbn{font-weight:600;font-size:14px}.rba{font-family:'Barlow Condensed',sans-serif;font-weight:700;color:var(--acc);font-size:15px}
+    .fb{display:flex;gap:7px;margin-bottom:13px;overflow-x:auto;padding-bottom:3px;scrollbar-width:none}
+    .fb::-webkit-scrollbar{display:none}
+    .fbb{flex-shrink:0;padding:6px 11px;border-radius:99px;border:1px solid var(--brd);background:var(--s2);color:var(--t2);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:'Barlow',sans-serif;-webkit-tap-highlight-color:transparent}
+    .fbb.on{background:var(--acc);border-color:var(--acc);color:#0d1014}
+    .empty{text-align:center;padding:38px 18px;color:var(--t3)}
+    /* Modal */
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:300;display:flex;align-items:center;justify-content:center;padding:18px}
+    .modal{background:var(--s1);border:1px solid var(--brd);border-radius:14px;padding:22px;width:100%;max-width:360px;max-height:90dvh;overflow-y:auto}
+    .modal-tit{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:19px;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+    /* Admin */
+    .adm-card{background:var(--s1);border:1px solid rgba(245,158,11,.28);border-radius:var(--r);padding:14px;margin-bottom:11px}
+    .prj-item{background:var(--s2);border:1px solid var(--brd);border-radius:8px;padding:10px 11px;margin-bottom:7px}
+    .doc-item{display:flex;align-items:center;gap:9px;padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:5px;border:1px solid var(--brd)}
+    .doc-info{flex:1;overflow:hidden}
+    .doc-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .doc-meta{font-size:11px;color:var(--t2)}
+    /* Toast */
+    .toast{position:fixed;bottom:calc(62px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:var(--acc);color:#0d1014;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;padding:9px 20px;border-radius:99px;z-index:400;letter-spacing:.5px;white-space:nowrap;pointer-events:none;animation:fio 2.5s forwards}
+    @keyframes fio{0%{opacity:0;transform:translateX(-50%) translateY(8px)}12%{opacity:1;transform:translateX(-50%)}75%{opacity:1}100%{opacity:0}}
+    /* Loading */
+    .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100dvh;gap:14px;color:var(--t2);font-size:14px}
+    .spinner{width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    /* Install banner */
+    .install-banner{background:var(--s2);border-bottom:1px solid var(--brd);padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--t2)}
+    .install-banner strong{color:var(--acc)}
+    /* Scrollbar */
+    ::-webkit-scrollbar{width:3px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--brd);border-radius:99px}
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="loading">
+    <div class="spinner"></div>
+    <span>Coolvarko Napló betöltése…</span>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+// TEVÉKENYSÉG LISTA (árjegyzék alapján)
+// ══════════════════════════════════════════════════════════════════════════════
+const AKTIVITASOK = {
+  "Alapozás, Földmunka, Vasalás":["Épület kitűzés","Föld kitermelés, deponálás","Kézi árokásás (talajosztály 1-2)","Sávalap alapárok gépi kiemelése","Pontalap gödör gépi kiemelése","Pince gödör gépi kiemelés","Sávalap alapásás","Sávalap árok kézi tisztítása","Sóder/kavics feltöltés + tömörítés","Földfeltöltés, tömörítés","Föld elszállítása, sóder beszállítása","Sávalap vasalás","Szerelőbeton vasalás","Hegesztett háló fektetése 100×100 mm","Hegesztett háló fektetése 150×150 mm","Kézi fúrás, furat Ø25 cm-ig"],
+  "Betonozási Munkák":["Alapbetonozás gépi","Sávalap betonozás (mixerbetonnal)","Sávalap betonozás (kézileg)","Kézi betonozás általános","Aljzatbetonozás 6cm-ig","Kézi bedolgozású aljzatbeton max 7 cm","Vastag alapléteg betonozása 100 mm-ig","Vastag alapléteg betonozása 150 mm-ig","Vastag alapléteg betonozása 200 mm-ig","Szerelőbetonozás","Térbetonozás / járda, kocsibeálló","Betonozás kézi keveréssel","Mennyezeti födém bezsaluzása (Doka, Peri)","Doka, Peri rendszer szétszerelése","Egyenes lépcső zsaluzatának beépítése","Lépcsőzsaluzat szétszerelése","Aszfalt szigetelés (IPA) fektetése hegesztéssel","Aszfalt alapozó réteg","Gépi esztrich – cementes","Gépi esztrich – anhidrit önterülő","Kerámia mennyezet beépítése"],
+  "Koszorú, Zsalukő és Zsaluzás":["Vaskoszorú szerelés","Vasbeton koszorú","Zsalukövezés 15-ös","Zsalukövezés 20-as","Zsalukövezés 30-as","Zsalukövezés 40-es","Lábazat készítés zsalukőből (1 sor)","Zsaluzás táblásított","Zsaluzás egyoldali","Zsaluzás kétoldali falzsalu","Zsaluzás pillér"],
+  "Falazás":["Főfalazás 25-as","Főfalazás 30-as","Főfalazás 38-as","Főfalazás 44-es","Falazás durva szerkezet 30cm (Porotherm/Ytong)","Körülhatároló falak téglafalazása 30cm-ig","Válaszfalazás 10-es","Válaszfal falazása max 12,5 cm","Üvegtégla rakás","Terméskő rakás","Burkoló / kistégla rakás","Pillérek készítése kistéglából","Vasbeton pillér készítés","Áthidalók beépítése","Monolit áthidaló (zsalu+vasalás+beton)","Monolit lépcső (110cm szélesig)","Samott kémény kerámia béléssel","Schiedel kémény kerámia béléssel","Egykürtős kémény (1 lyukú)","Kerítésépítés hagyományos"],
+  "Födém és Tetőszerkezet":["E-gerendás födém","Porotherm födém","Monolit födém","Tetőtér szigetelés (szerkezet+fólia+karton)"],
+  "Vakolás":["Kézi vakolás durvázva (mész-cement)","Kézi vakolás simítva","Gépi vakolás mész-cement","Finom mész-cement vakolat (Feinputz)","Gipsz/glett vakolat","Külső vakolatok","Simító vakolat beltér/kültér","Mennyezetivakolat simítása","Falvakolat simítása","Gipszelés – bandázsolás","Élvédőzés","Ablakkáva"],
+  "Hőszigetelés és Homlokzat":["Homlokzati hőszigetelés EPS polisztirol","Homlokzati hőszigetelés ásványgyapot","ETICS komplett rendszer 20cm-ig","Komplett dryvitolás (10cm)","Külső falak vakolása vékonyrétegű kapart 2mm","Külső falak bevonása üvegtextil ráccsal","Homlokzatszínezés alapozással","Kőporozás","Viakolorozás","Dryvitolás + színezés 10 cm","Szigetelés GV4 lemezzel","Tetőtér hőszigetelés","Állványozás / emelvény","Szellőzőrács beépítése","Ablakkáva XPS/Styropor ragasztása"],
+  "Gipszkarton Szerelés":["GK válaszfal 2×2 réteg + szigetelés","GK válaszfal 2×1 réteg + szigetelés","GK falak dupla burkolat","GK előtétfal 2 réteg + szigetelés","GK előtétfal 1 réteg + szigetelés","GK előtétfal ragasztva","GK előtétfal (szigetelés nélkül)","Álmennyezet 2 réteg + szigetelés + fólia","Álmennyezet 1 réteg + szigetelés + fólia","Álmennyezet 1 réteg","Álmennyezet minerál/kazettás","GK ferde síkok és mennyezetek tetőtérben","Párazáró fólia beépítése GK álmennyezetbe","GK válaszfal Knauf Habito","GK válaszfal Knauf Diamant","Akusztikai/hőszigetelés beépítése GK-ba","Válaszfalba ajtó kialakítás + beépítés","Ajtók beépítése GK válaszfalba","GK revíziós ajtó beépítése","GK polcok, fülkék, beépített elemek","Dobozolás + rejtett világítás","Íves falak GK"],
+  "Festési Munkák":["Régi festék lekaparása","Régi olajfesték lekaparása","Falfix mélyalapozó felhordása","Festés fal alapozása (2x fehér festék)","Falfestés színes bevonat","Sarokgyöngyök felszerelése","Falak tapétázása","Velencei stukkó polírozott simítóval","Repedések kijavítása falakon és mennyezeten","Csatlakozások akrilációja","Fűtéscsövek festése","Radiátorok festése"],
+  "Burkolási Munkák":["Aljzat kiegyenlítés","Csempefektetés max 60cm-es lapok","Csempefektetés Gres 60cm felett","Csempefektetés nagyméretű 60×120 cm","Csempefektetés nagyméretű 120×260 cm","Oldalfalburkolás csempe","Pillérburkolás","Lépcsőburkolás","Diagonál burkolás","Márványburkolás","Mozaik csempézés","Dísztéglás burkolás belső/külső fugával","Természetes / műkő / klinkertégla burkolat","Burkolat hasított kővel (külső lábazat)","Lábazatburkolás","Szilikonozás / sarkok szilikonozása","Csempe és járólap fugázása","Vízszigetelő bevonat (fürdő, mosdó, zuhany)","Vízszigetelő szalagok ragasztása sarkokra","Hagyományos parkettázás","Laminált parkettázás + szegély","Szőnyegpadló + szegély","PVC padló + szegély","Szegélyezések","Kád felszerelése + lefolyó","Kád körbefalazása","Zuhanyzó lépcsőfokának falazása és lejtése","Geberit WC-készülék beépítése + körbefalazás","Mosdó felszerelése","Csaptelep felszerelése"],
+  "Vízvezeték-szerelés":["Vízvezeték-szerelés komplett (lakás)","Vájatok vágása vízvezetékekhez","Falak lehúzása vízvezeték-szerelés után","Geberit szerkezet szerelése","Zuhanykabin üvegének beszerelése","Ellenőrző ajtók beépítése","Mosdókagyló felszerelése","Keverőtest felszerelése (iBox)","Keverőcsapok felszerelése mosdó/mosogató","Keverőcsap felszerelése kád","Szárító és mosógép szelep felszerelése","Végszelepek szerelése"],
+  "Térkő és Szegélyek":["Térkő felszedése","Aljzat előkészítése / kiegyenlítése","Aljzat lenyomása rezgőlappal","Durva alapréteg készítése","Térkő lerakása 4–6 cm vastag","Macskaköves útburkolat lerakása","Parkszegély beépítése","Útszegély beépítése","Térkő vágása","Paliszád rakása","Vízlevezető folyóka betonba ágyazása","Szegélykövek beépítése"],
+  "Kerítésgyártás és Telepítés":["Régi kerítés bontása","Betonkerítés szerelése 1,8 m-ig","Betonkerítés szerelése 2,1 m-ig","Betonkerítés szerelése 2,4 m-ig","Kerítés építése zsalukőből","Kerítésépítés hagyományos","Oszlop állítása 2,4 m-ig","Oszlop állítása 2,7 m-ig","Rögzítő kar (bavolet) szerelése","Kerítéspanel szerelése","Kerítésfonat szerelése","Sarokkötés készítése"],
+  "Bontási Munkák":["Csempék bontása","Válaszfalak lebontása - tégla","Tömör tégla falazat bontása","Vasbeton lemez bontása","Régi úsztatott padló eltávolítása","Kád leszerelése","Beépített szekrények bontása","Régi konyhabútor bontása","Fémajtóráma lebontása"],
+  "Vízszigetelés / Alapfal Védelem":["Kátrány-/bitumenes lemez felhelyezése 1 réteg","Dörken drénlemez (Delta-MS) beépítés","Alapfal vízszigetelés komplett","Alapfal vízszigetelés kétrétegű víznyomás elleni","Aszfalt szigetelés (IPA) hegesztéssel","Vízszigetelő bevonat kenhető (fürdő)","Vízszigetelő szalagok sarkokra","Szigetelés GV4 lemezzel"],
+};
+const EGYSEGEK=["m³","m²","fm","db","kg","t","zsák","l","óra"];
+const ANYAGOK=["Beton C16/20","Beton C20/25","Beton C25/30","Tégla (normál)","Tégla (porotherm)","Blokktégla","Zsalukő 15","Zsalukő 20","Zsalukő 30","Zsalukő 40","Cement","Mész","Gipsz","Vakolat gépi","Vakolat kézi","Betonacél Ø8","Betonacél Ø10","Betonacél Ø12","Betonacél Ø16","Hegesztett háló","Zsalu deszka","Zsalu tábla","Állvány elem","Vízszigetelő fólia","Bitumen lemez","Dörken Delta-MS drénlemez","XPS szigetelés","EPS szigetelés","Ásványgyapot","Gipszkarton lap","GK profil","Csempe","Járólap","Parketta","Laminált padló","Fugázó","Szilikon","Homok","Kavics","Zúzott kő"];
+
+// ── State ──────────────────────────────────────────────────────────────────
+const S = {
+  tab: "rogzit",
+  isAdmin: false,
+  adminSubTab: "projektek",
+  naplo: [],
+  projektek: [],
+  naploFilter: "Mind",
+  // Wizard
+  wStep: 1,
+  wForm: null,
+  wOpenKat: {},
+  wSearch: "",
+  // Modals
+  ujPrjModal: false,
+  pinModal: false,
+  selectedPrj: null,
+  prjDokumentumok: [],
+  prjDokUnsub: null,
+  // Install
+  installPrompt: null,
+  showInstall: false,
+  // Online
+  online: navigator.onLine,
+  // Toast
+  toastMsg: null,
+  // Admin settings
+  adminPin: "1234",
+  // Unsub
+  _naploUnsub: null,
+  _prjUnsub: null,
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+const today=()=>new Date().toISOString().split("T")[0];
+const fmt=(d)=>new Date(d).toLocaleDateString("hu-HU");
+const fmtSize=(b)=>b>1048576?`${(b/1048576).toFixed(1)} MB`:`${(b/1024).toFixed(0)} KB`;
+const freshForm=()=>({
+  datum:today(),
+  projekt: S.projektek[0]?.nev || "",
+  brigad:[{nev:"",munkaorák:8}],
+  aktivitasok:[], megjegyzes:"",
+  felhasznaltAnyagok:[], igenyeltAnyagok:[],
+});
+
+function toast(msg,dur=2400){
+  S.toastMsg=msg; render();
+  setTimeout(()=>{S.toastMsg=null;render();},dur);
+}
+
+// ── Icons (inline SVG) ─────────────────────────────────────────────────────
+const IC={
+  plus:"M12 5v14M5 12h14",
+  list:"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+  chart:"M18 20V10M12 20V4M6 20v-6",
+  shield:"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  trash:"M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2",
+  search:"M21 21l-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0",
+  chevron:"M6 9l6 6 6-6",
+  folder:"M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
+  file:"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6",
+  eye:"M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+  x:"M18 6L6 18M6 6l12 12",
+  lock:"M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4",
+  download:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
+  settings:"M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z",
+};
+const icon=(name,size=20,color="currentColor")=>`<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${IC[name]?.split("M").filter(Boolean).map(s=>`<path d="M${s}"/>`).join("")||""}</svg>`;
+
+// ── Logo SVG ───────────────────────────────────────────────────────────────
+const LOGO=`<svg height="46" viewBox="0 0 460 118" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0">
+  <defs>
+    <linearGradient id="lg-r" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#555"/><stop offset="45%" stop-color="#bbb"/><stop offset="55%" stop-color="#ddd"/><stop offset="100%" stop-color="#555"/></linearGradient>
+    <linearGradient id="lg-t" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#e0ff55"/><stop offset="28%" stop-color="#9ed400"/><stop offset="65%" stop-color="#5c9400"/><stop offset="100%" stop-color="#2e5000"/></linearGradient>
+  </defs>
+  <polyline points="28,72 230,12 432,72" fill="none" stroke="url(#lg-r)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="28" y1="88" x2="432" y2="88" stroke="url(#lg-r)" stroke-width="2.5"/>
+  <rect x="22" y="86" width="13" height="5" rx="1.5" fill="url(#lg-r)"/>
+  <rect x="425" y="86" width="13" height="5" rx="1.5" fill="url(#lg-r)"/>
+  <text x="230" y="79" text-anchor="middle" font-family="'Arial Black','Franklin Gothic Heavy','Impact',sans-serif" font-weight="900" font-size="51" fill="url(#lg-t)" stroke="#1a3d00" stroke-width="1" letter-spacing="2">COOLVARKO</text>
+  <text x="230" y="110" text-anchor="middle" font-family="Arial,sans-serif" font-weight="300" font-size="11" fill="#666" letter-spacing="8">— KFT —</text>
+</svg>`;
+
+// ── Render engine (lightweight virtual DOM replacement) ────────────────────
+function $(id){return document.getElementById(id)}
+function el(tag,attrs={},children=""){
+  const a=Object.entries(attrs).map(([k,v])=>v===true?k:v===false?"":`${k}="${v}"`).filter(Boolean).join(" ");
+  return `<${tag}${a?" "+a:""}>${children}</${tag}>`;
+}
+
+// ── Aktivitás picker HTML ──────────────────────────────────────────────────
+function renderAktPicker(){
+  const sel=S.wForm.aktivitasok;
+  const search=S.wSearch;
+  const filt=search.trim()
+    ?Object.fromEntries(Object.entries(AKTIVITASOK).map(([k,v])=>[k,v.filter(a=>a.toLowerCase().includes(search.toLowerCase()))]).filter(([,v])=>v.length))
+    :AKTIVITASOK;
+  let html=`<div class="srch-w"><span class="srch-ic">${icon("search",15)}</span><input class="inp" id="aktSearch" placeholder="Keresés a 250+ tevékenység között…" value="${search.replace(/"/g,'&quot;')}"/></div>`;
+  if(sel.length>0) html+=`<div style="margin-bottom:9px;padding:6px 10px;background:rgba(126,200,0,.1);border:1px solid rgba(126,200,0,.3);border-radius:8px;font-size:12px"><span style="color:var(--acc);font-weight:700">${sel.length} kiválasztva: </span><span style="color:var(--t2)">${sel.join(" · ")}</span></div>`;
+  for(const [kat,items] of Object.entries(filt)){
+    const isOpen=search.trim()||S.wOpenKat[kat];
+    const cnt=items.filter(a=>sel.includes(a)).length;
+    html+=`<div class="kath" onclick="toggleKat('${kat.replace(/'/g,"\\'")}')"><span>${kat}${cnt>0?`<span class="badge" style="margin-left:6px">${cnt}</span>`:""}</span><span class="karr ${isOpen?"op":""}">${icon("chevron",14)}</span></div>`;
+    if(isOpen) html+=`<div class="pg">${items.map(a=>`<div class="pill ${sel.includes(a)?"on":""}" onclick="toggleAkt('${a.replace(/'/g,"\\'")}')"><span>${a}</span></div>`).join("")}</div>`;
+  }
+  return html;
+}
+
+// ── Wizard HTML ────────────────────────────────────────────────────────────
+function renderWizard(){
+  if(!S.wForm) S.wForm=freshForm();
+  const f=S.wForm;
+  const steps=["Alap","Brigád","Munka","Anyag"];
+  let html=`<div class="stit">Napi bejegyzés</div><div class="steps">${steps.map((s,i)=>`<div class="step ${S.wStep===i+1?"on":S.wStep>i+1?"dn":""}" onclick="setWStep(${i+1})">${s}</div>`).join("")}</div>`;
+
+  if(S.wStep===1){
+    const prjOpts=S.projektek.map(p=>`<option value="${p.nev}"${f.projekt===p.nev?" selected":""}>${p.nev}</option>`).join("");
+    html+=`<div class="card">
+      <div class="ctit"><span class="acc">1.</span> Alapadatok</div>
+      <div class="fld"><label class="lbl">Dátum</label><input type="date" class="inp" id="wDatum" value="${f.datum}"/></div>
+      <div class="fld"><label class="lbl">Projekt / Helyszín</label>
+        <div class="r2" style="gap:6px">
+          <select class="sel" id="wProjekt" style="flex:1">${prjOpts}</select>
+          <button class="btn btn-s btn-ic" onclick="S.ujPrjModal=true;render()" title="Új projekt">${icon("plus",18)}</button>
+        </div>
+      </div>
+      <div class="fld"><label class="lbl">Megjegyzés</label><textarea class="ta" id="wMegjegyzes" placeholder="Napi megjegyzések, időjárás, különleges körülmények…">${f.megjegyzes}</textarea></div>
+      <button class="btn btn-p" onclick="wNext()">Tovább: Brigád →</button>
+    </div>`;
+  } else if(S.wStep===2){
+    const ora=f.brigad.reduce((s,m)=>s+Number(m.munkaorák||0),0);
+    html+=`<div class="card">
+      <div class="ctit"><span class="acc">2.</span> Brigád létszám</div>
+      ${f.brigad.map((m,i)=>`<div class="brow"><div class="brh"><span style="font-size:11px;color:var(--a2);font-weight:700">#${i+1} MUNKÁS</span>${f.brigad.length>1?`<button class="btn btn-d" onclick="remBr(${i})">✕</button>`:""}</div><div class="r2"><div style="flex:2"><input class="inp" placeholder="Név (opcionális)" value="${m.nev}" oninput="updBr(${i},'nev',this.value)"/></div><div style="flex:1"><input type="number" class="inp" placeholder="Óra" min="1" max="16" step="0.5" value="${m.munkaorák}" oninput="updBr(${i},'munkaorák',this.value)"/></div></div></div>`).join("")}
+      <button class="btn btn-s" style="margin-bottom:11px" onclick="addBr()">+ Munkás hozzáadása</button>
+      <div style="padding:10px 13px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.3);border-radius:8px;margin-bottom:13px;font-size:14px">
+        👷 <strong style="color:var(--a2)">${f.brigad.length} fő</strong> — összesen <strong style="color:var(--acc)">${ora} munkaóra</strong>
+      </div>
+      <div class="r2"><button class="btn btn-s" onclick="setWStep(1)">← Vissza</button><button class="btn btn-p" onclick="wNext()">Tovább →</button></div>
+    </div>`;
+  } else if(S.wStep===3){
+    html+=`<div class="card"><div class="ctit"><span class="acc">3.</span> Elvégzett munkák</div>${renderAktPicker()}<hr class="divd"/><div class="r2"><button class="btn btn-s" onclick="setWStep(2)">← Vissza</button><button class="btn btn-p" onclick="wNext()">Tovább →</button></div></div>`;
+  } else if(S.wStep===4){
+    const anyagSor=(arr,t,lbl,color)=>arr.map((a,i)=>`<div class="brow"><div class="brh"><span style="font-size:11px;color:${color};font-weight:700">${lbl} #${i+1}</span><button class="btn btn-d" onclick="remA('${t}',${i})">✕</button></div><div class="fld" style="margin-bottom:7px"><input list="al${t}${i}" class="inp" placeholder="Anyag neve…" value="${a.nev}" oninput="updA('${t}',${i},'nev',this.value)"/><datalist id="al${t}${i}">${ANYAGOK.map(x=>`<option value="${x}"/>`).join("")}</datalist></div><div class="r2"><input type="number" class="inp" placeholder="Mennyiség" min="0" step="0.1" value="${a.mennyiseg}" oninput="updA('${t}',${i},'mennyiseg',this.value)"/><select class="sel" onchange="updA('${t}',${i},'egyseg',this.value)">${EGYSEGEK.map(e=>`<option${a.egyseg===e?" selected":""}>${e}</option>`).join("")}</select></div></div>`).join("");
+    html+=`<div class="card">
+      <div class="ctit"><span class="acc">4.</span> Anyagok</div>
+      <div style="font-size:12px;font-weight:700;color:var(--grn);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">✅ Felhasznált anyagok</div>
+      ${anyagSor(f.felhasznaltAnyagok,"f","Anyag","var(--grn)")}
+      <button class="btn btn-s" style="margin-bottom:14px" onclick="addA('f')">+ Felhasznált anyag</button>
+      <hr class="divd"/>
+      <div style="font-size:12px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">⚡ Következő napra igényelt anyagok</div>
+      ${anyagSor(f.igenyeltAnyagok,"i","Igény","var(--acc)")}
+      <button class="btn btn-s" style="margin-bottom:14px" onclick="addA('i')">+ Anyagigény rögzítése</button>
+      <hr class="divd"/>
+      <button class="btn btn-p" onclick="wMentes()">✓ Bejegyzés mentése</button>
+      <button class="btn btn-s" style="margin-top:8px" onclick="setWStep(3)">← Vissza</button>
+    </div>`;
+  }
+  return html;
+}
+
+// ── Napló lista HTML ───────────────────────────────────────────────────────
+function renderNaplo(){
+  const all=S.naplo;
+  const projektek=["Mind",...new Set(all.map(n=>n.projekt))];
+  const filtered=S.naploFilter==="Mind"?all:all.filter(n=>n.projekt===S.naploFilter);
+  let html=`<div class="stit">Napló</div><div class="fb">${projektek.map(p=>`<button class="fbb ${S.naploFilter===p?"on":""}" onclick="S.naploFilter='${p.replace(/'/g,"\\'")}';render()">${p}</button>`).join("")}</div>`;
+  if(!filtered.length) return html+`<div class="empty"><p>Még nincs bejegyzés</p></div>`;
+  filtered.forEach(n=>{
+    const br=n.brigad||n.munkasok||[];
+    const ora=br.reduce((s,m)=>s+Number(m.munkaorák||0),0);
+    html+=`<div class="le"><div class="leh"><div><div class="lp">${n.projekt}</div><div class="ld">${fmt(n.datum)}</div></div><button class="btn btn-d" onclick="naploTorol('${n.id}')">${icon("trash",13)}</button></div>
+    <div style="margin-bottom:6px"><span class="lt w">👷 ${br.length} fő — ${ora} óra</span></div>
+    ${(n.aktivitasok||[]).length?`<div style="margin-bottom:5px">${n.aktivitasok.map(a=>`<span class="lt">${a}</span>`).join("")}</div>`:""}
+    ${(n.felhasznaltAnyagok||[]).length?`<div style="margin-bottom:4px"><div style="font-size:10px;color:var(--grn);font-weight:700;text-transform:uppercase;margin-bottom:2px">Felhasznált:</div>${n.felhasznaltAnyagok.map(a=>`<span class="lt m">${a.nev} — ${a.mennyiseg} ${a.egyseg}</span>`).join("")}</div>`:""}
+    ${(n.igenyeltAnyagok||[]).length?`<div><div style="font-size:10px;color:var(--acc);font-weight:700;text-transform:uppercase;margin-bottom:2px">⚡ Igény:</div>${n.igenyeltAnyagok.map(a=>`<span class="lt r">${a.nev} — ${a.mennyiseg} ${a.egyseg}</span>`).join("")}</div>`:""}
+    ${n.megjegyzes?`<div style="margin-top:7px;font-size:13px;color:var(--t2);border-top:1px solid var(--brd);padding-top:7px">${n.megjegyzes}</div>`:""}
+    </div>`;
+  });
+  return html;
+}
+
+// ── Statisztikák HTML ──────────────────────────────────────────────────────
+function renderStat(){
+  const naplo=S.naplo;
+  const osszesFo=naplo.reduce((s,n)=>s+(n.brigad||n.munkasok||[]).length,0);
+  const osszesMunkaOra=naplo.reduce((s,n)=>s+(n.brigad||n.munkasok||[]).reduce((ss,m)=>ss+Number(m.munkaorák||0),0),0);
+  const agg=(key)=>{const m={};naplo.forEach(n=>(n[key]||[]).forEach(a=>{if(!a.nev)return;if(!m[a.nev])m[a.nev]={};const e=a.egyseg||"db";m[a.nev][e]=(m[a.nev][e]||0)+Number(a.mennyiseg||0)}));return m};
+  const anyagMap=agg("felhasznaltAnyagok"),igenyMap=agg("igenyeltAnyagok");
+  const aktMap={};naplo.forEach(n=>(n.aktivitasok||[]).forEach(a=>{aktMap[a]=(aktMap[a]||0)+1}));
+  const topAkt=Object.entries(aktMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const prjMap={};naplo.forEach(n=>{if(!prjMap[n.projekt])prjMap[n.projekt]={napok:0,orak:0};prjMap[n.projekt].napok++;prjMap[n.projekt].orak+=(n.brigad||n.munkasok||[]).reduce((s,m)=>s+Number(m.munkaorák||0),0)});
+  let html=`<div class="stit">Statisztikák</div>
+  <div class="stats">
+    <div class="stat"><div class="sv">${naplo.length}</div><div class="sl">Bejegyzés</div></div>
+    <div class="stat"><div class="sv">${osszesFo}</div><div class="sl">Össz. létszám</div></div>
+    <div class="stat"><div class="sv">${osszesMunkaOra}</div><div class="sl">Munkaóra</div></div>
+    <div class="stat"><div class="sv">${Object.keys(prjMap).length}</div><div class="sl">Projekt</div></div>
+  </div>`;
+  if(topAkt.length) html+=`<div class="card" style="margin-bottom:11px"><div class="ctit">🔧 Leggyakoribb munkák</div>${topAkt.map(([a,cnt])=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-size:13px;flex:1;margin-right:8px">${a}</span><div style="display:flex;align-items:center;gap:8px"><div style="width:55px;height:5px;background:var(--s2);border-radius:99px;overflow:hidden"><div style="width:${Math.min(100,(cnt/naplo.length)*100)}%;height:100%;background:var(--acc);border-radius:99px"></div></div><span class="badge">${cnt}</span></div></div>`).join("")}</div>`;
+  if(Object.keys(anyagMap).length) html+=`<div class="card" style="margin-bottom:11px"><div class="ctit">📦 Felhasznált anyagok</div>${Object.entries(anyagMap).map(([nev,eg])=>`<div class="rb"><div class="rbn">${nev}</div><div>${Object.entries(eg).map(([e,a])=>`<div class="rba">${Number(a).toFixed(1)} ${e}</div>`).join("")}</div></div>`).join("")}</div>`;
+  if(Object.keys(igenyMap).length) html+=`<div class="card" style="margin-bottom:11px"><div class="ctit">⚡ Anyagigények összesítve</div>${Object.entries(igenyMap).map(([nev,eg])=>`<div class="rb"><div class="rbn">${nev}</div><div>${Object.entries(eg).map(([e,a])=>`<div class="rba">${Number(a).toFixed(1)} ${e}</div>`).join("")}</div></div>`).join("")}</div>`;
+  if(Object.keys(prjMap).length) html+=`<div class="card"><div class="ctit">🏗️ Projektek összesítő</div>${Object.entries(prjMap).map(([p,d])=>`<div style="margin-bottom:9px;padding:8px 10px;background:var(--s2);border-radius:8px"><div style="font-weight:600;font-size:14px;margin-bottom:2px">${p}</div><div style="font-size:13px;color:var(--t2)">${d.napok} munkanap · ${d.orak} munkaóra</div></div>`).join("")}</div>`;
+  return html;
+}
+
+// ── Admin HTML ─────────────────────────────────────────────────────────────
+function renderAdmin(){
+  const sub=S.adminSubTab;
+  let html=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div class="stit amb" style="margin-bottom:0">Admin panel</div><button class="btn btn-d" style="font-size:12px" onclick="adminLogout()">Kilépés</button></div>
+  <div class="fb" style="margin-bottom:14px">
+    <button class="fbb ${sub==="projektek"?"on":""}" onclick="S.adminSubTab='projektek';render()">🏗️ Projektek</button>
+    <button class="fbb ${sub==="naplo"?"on":""}" onclick="S.adminSubTab='naplo';render()">📋 Napló</button>
+    <button class="fbb ${sub==="export"?"on":""}" onclick="S.adminSubTab='export';render()">📤 Export</button>
+    <button class="fbb ${sub==="beallitas"?"on":""}" onclick="S.adminSubTab='beallitas';render()">⚙️ Beállítás</button>
+  </div>`;
+
+  if(sub==="projektek"){
+    html+=`<button class="btn btn-amb" style="margin-bottom:13px" onclick="S.ujPrjModal=true;render()">${icon("plus",18)} Új projekt létrehozása</button>`;
+    S.projektek.forEach(p=>{
+      const napok=S.naplo.filter(n=>n.projekt===p.nev).length;
+      const ora=S.naplo.filter(n=>n.projekt===p.nev).reduce((s,n)=>s+(n.brigad||n.munkasok||[]).reduce((ss,m)=>ss+Number(m.munkaorák||0),0),0);
+      const isOpen=S.selectedPrj?.id===p.id;
+      html+=`<div class="adm-card"><div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:7px">
+        <div style="flex:1"><div style="font-weight:700;font-size:15px">${p.nev}</div>
+        ${p.helyszin?`<div style="font-size:12px;color:var(--t2);margin-top:2px">📍 ${p.helyszin}</div>`:""}
+        ${p.megrendelo?`<div style="font-size:12px;color:var(--t2)">👤 ${p.megrendelo}</div>`:""}
+        <div style="margin-top:5px;display:flex;gap:10px;font-size:12px;color:var(--t3)"><span>📋 ${napok} nap</span><span>⏱ ${ora} óra</span></div></div>
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          <button class="btn btn-s btn-ic" style="border:none;color:var(--a2);padding:6px 9px" onclick="togglePrjDok('${p.id}')">${icon(isOpen?"x":"folder",15)}</button>
+          <button class="btn btn-d" style="padding:6px 9px" onclick="prjTorol('${p.id}','${p.nev.replace(/'/g,"\\'")}')">${icon("trash",14)}</button>
+        </div>
+      </div>`;
+      if(isOpen){
+        html+=`<div style="border-top:1px solid var(--brd);padding-top:9px;margin-top:3px"><div style="font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">📁 Dokumentumok és rajzok</div>`;
+        if(!S.prjDokumentumok.length) html+=`<div style="font-size:13px;color:var(--t3);text-align:center;padding:10px 0;margin-bottom:7px">Még nincs feltöltött dokumentum</div>`;
+        S.prjDokumentumok.forEach(d=>{
+          html+=`<div class="doc-item"><div style="color:var(--a2);flex-shrink:0">${icon("file",19)}</div><div class="doc-info"><div class="doc-name">${d.nev}</div><div class="doc-meta">${fmtSize(d.meret)} · ${fmt(d.feltoltve)}</div></div><div style="display:flex;gap:4px"><a href="${d.url}" target="_blank" class="btn btn-s" style="width:auto;padding:5px 8px;border:none">${icon("eye",14)}</a><button class="btn btn-d" style="padding:5px 8px" onclick="dokTorol('${p.id}','${d.id}','${d.path||""}')">${icon("trash",13)}</button></div></div>`;
+        });
+        html+=`<label class="btn btn-s" style="margin-top:3px;cursor:pointer">${icon("plus",16)} Dokumentum feltöltése<input type="file" style="display:none" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.docx" onchange="dokFeltolt('${p.id}',this)"/></label>
+        <div style="font-size:11px;color:var(--t3);margin-top:5px;text-align:center">PDF, JPG, PNG, XLSX, DOCX</div></div>`;
+      }
+      html+=`</div>`;
+    });
+  } else if(sub==="naplo"){
+    html+=renderNaplo();
+  } else if(sub==="export"){
+    html+=`<div class="adm-card"><div class="ctit"><span class="ambc">📤</span> Adatok exportálása</div>
+    <p style="font-size:13px;color:var(--t2);margin-bottom:13px">Töltsd le az összes naplóadatot CSV formátumban (Excel-kompatibilis) vagy JSON-ban.</p>
+    <button class="btn btn-amb" style="margin-bottom:9px" onclick="exportCSV()">${icon("download",17)} Exportálás CSV-be (Excel)</button>
+    <button class="btn btn-s" onclick="exportJSON()">${icon("download",17)} Exportálás JSON-ba</button></div>
+    <div class="adm-card"><div class="ctit"><span style="color:var(--red)">⚠️</span> Veszélyes zóna</div>
+    <p style="font-size:13px;color:var(--t2);margin-bottom:13px">A helyi gyorsítótár törlése (a Firebase adatok megmaradnak).</p>
+    <button class="btn btn-d" style="width:100%;padding:10px" onclick="cacheTorol()">Helyi cache törlése</button></div>`;
+  } else if(sub==="beallitas"){
+    html+=`<div class="adm-card"><div class="ctit"><span class="ambc">⚙️</span> Admin PIN módosítása</div>
+    <p style="font-size:13px;color:var(--t2);margin-bottom:13px">Az aktuális PIN: <strong style="color:var(--acc)">${S.adminPin}</strong></p>
+    <div class="fld"><label class="lbl">Új PIN kód (min. 4 karakter)</label><input type="password" class="inp" id="ujPin" placeholder="Új PIN…" minlength="4" maxlength="8"/></div>
+    <div class="fld"><label class="lbl">Megerősítés</label><input type="password" class="inp" id="ujPin2" placeholder="Ismételd meg…" minlength="4" maxlength="8"/></div>
+    <button class="btn btn-amb" onclick="pinMentes()">PIN mentése</button></div>`;
+  }
+  return html;
+}
+
+// ── Modals HTML ────────────────────────────────────────────────────────────
+function renderModals(){
+  let html="";
+  if(S.pinModal){
+    html+=`<div class="modal-bg" onclick="if(event.target===this){S.pinModal=false;render()}">
+    <div class="modal" style="text-align:center">
+      <div style="margin-bottom:11px;color:var(--amber)">${icon("lock",36,"var(--amber)")}</div>
+      <div class="modal-tit" style="text-align:center">Admin belépés</div>
+      <p style="font-size:13px;color:var(--t2);margin-bottom:14px">Add meg az admin PIN kódot.</p>
+      <input type="password" class="inp" id="pinInp" maxlength="8" placeholder="••••" style="text-align:center;font-size:22px;letter-spacing:8px;margin-bottom:11px" onkeydown="if(event.key==='Enter')pinCheck()"/>
+      <div id="pinErr" style="color:var(--red);font-size:13px;margin-bottom:8px;min-height:18px"></div>
+      <div class="r2"><button class="btn btn-s" onclick="S.pinModal=false;render()">Mégse</button><button class="btn btn-amb" onclick="pinCheck()">Belépés</button></div>
+    </div></div>`;
+    setTimeout(()=>{ const el=document.getElementById("pinInp"); if(el)el.focus(); },50);
+  }
+  if(S.ujPrjModal){
+    html+=`<div class="modal-bg" onclick="if(event.target===this){S.ujPrjModal=false;render()}">
+    <div class="modal">
+      <div class="modal-tit">🏗️ Új projekt</div>
+      <div class="fld"><label class="lbl">Projekt neve *</label><input class="inp" id="prjNev" placeholder="pl. Veszprém – Alapozás 2026"/></div>
+      <div class="fld"><label class="lbl">Helyszín / Cím</label><input class="inp" id="prjHely" placeholder="pl. 8200 Veszprém, Fő út 12."/></div>
+      <div class="fld"><label class="lbl">Megrendelő</label><input class="inp" id="prjMegr" placeholder="pl. Iron Building 78 Kft."/></div>
+      <div class="fld"><label class="lbl">Kezdési dátum</label><input type="date" class="inp" id="prjKezdes" value="${today()}"/></div>
+      <div class="fld"><label class="lbl">Megjegyzés</label><textarea class="ta" id="prjLeiras" style="min-height:52px" placeholder="Projekt leírása…"></textarea></div>
+      <div class="r2"><button class="btn btn-s" onclick="S.ujPrjModal=false;render()">Mégse</button><button class="btn btn-p" onclick="ujProjektMent()">Létrehozás</button></div>
+    </div></div>`;
+    setTimeout(()=>{ const el=document.getElementById("prjNev"); if(el)el.focus(); },50);
+  }
+  return html;
+}
+
+// ── Install banner ─────────────────────────────────────────────────────────
+function renderInstallBanner(){
+  if(!S.showInstall||!S.installPrompt) return "";
+  return `<div class="install-banner"><span>📲 <strong>Telepítsd</strong> az appot a telefon főoldalára!</span><button class="btn btn-p" style="width:auto;padding:6px 13px;font-size:13px" onclick="installApp()">Telepítés</button><button onclick="S.showInstall=false;render()" style="background:none;border:none;color:var(--t2);cursor:pointer;padding:4px">✕</button></div>`;
+}
+
+// ── Main render ────────────────────────────────────────────────────────────
+function render(){
+  const app=document.getElementById("app");
+  if(!app) return;
+  const tabs=[
+    {id:"rogzit",lbl:"Rögzít",ic:"plus"},
+    {id:"naplo",lbl:"Napló",ic:"list"},
+    {id:"stat",lbl:"Statisztika",ic:"chart"},
+    {id:"admin",lbl:"Admin",ic:"shield",adm:true},
+  ];
+  let content="";
+  if(S.tab==="rogzit") content=renderWizard();
+  else if(S.tab==="naplo") content=renderNaplo();
+  else if(S.tab==="stat") content=renderStat();
+  else if(S.tab==="admin") content=renderAdmin();
+
+  app.innerHTML=`
+    ${renderInstallBanner()}
+    <div class="hdr">
+      ${LOGO}
+      <div class="hdr-right">
+        ${S.isAdmin&&S.tab==="admin"?`<span style="display:flex;align-items:center;gap:4px;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.35);color:var(--amber);padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700">${icon("shield",12,"var(--amber)")} ADMIN</span>`:""}
+        <div class="hdr-date">${new Date().toLocaleDateString("hu-HU",{month:"short",day:"numeric"})}</div>
+        <div class="online-dot${S.online?"":" off"}" title="${S.online?"Online":"Offline"}"></div>
+      </div>
+    </div>
+    <div class="cnt" id="mainCnt">${content}</div>
+    <div class="nav">${tabs.map(t=>`<button class="nb ${t.adm?"adm":""} ${S.tab===t.id?"on":""}" onclick="setTab('${t.id}')">${icon(t.ic,20)} ${t.lbl}</button>`).join("")}</div>
+    ${S.toastMsg?`<div class="toast">${S.toastMsg}</div>`:""}
+    ${renderModals()}
+  `;
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+window.setTab=(t)=>{
+  if(t==="admin"&&!S.isAdmin){ S.pinModal=true; render(); return; }
+  S.tab=t; render();
+};
+window.setWStep=(n)=>{ saveWizardInputs(); S.wStep=n; render(); };
+window.wNext=()=>{ saveWizardInputs(); S.wStep=Math.min(4,S.wStep+1); render(); };
+
+function saveWizardInputs(){
+  if(!S.wForm) return;
+  const d=$("wDatum"),p=$("wProjekt"),m=$("wMegjegyzes"),as=$("aktSearch");
+  if(d) S.wForm.datum=d.value;
+  if(p) S.wForm.projekt=p.value;
+  if(m) S.wForm.megjegyzes=m.value;
+  if(as) S.wSearch=as.value;
+}
+
+window.addBr=()=>{ S.wForm.brigad.push({nev:"",munkaorák:8}); render(); };
+window.remBr=(i)=>{ S.wForm.brigad.splice(i,1); render(); };
+window.updBr=(i,k,v)=>{ saveWizardInputs(); S.wForm.brigad[i][k]=v; };
+window.addA=(t)=>{ const k=t==="f"?"felhasznaltAnyagok":"igenyeltAnyagok"; S.wForm[k].push({id:uid(),nev:"",mennyiseg:"",egyseg:"m³"}); render(); };
+window.remA=(t,i)=>{ const k=t==="f"?"felhasznaltAnyagok":"igenyeltAnyagok"; S.wForm[k].splice(i,1); render(); };
+window.updA=(t,i,k,v)=>{ const key=t==="f"?"felhasznaltAnyagok":"igenyeltAnyagok"; S.wForm[key][i][k]=v; };
+window.toggleAkt=(a)=>{ const sel=S.wForm.aktivitasok; const idx=sel.indexOf(a); idx>=0?sel.splice(idx,1):sel.push(a); render(); };
+window.toggleKat=(k)=>{ S.wOpenKat[k]=!S.wOpenKat[k]; render(); };
+
+window.wMentes=async()=>{
+  saveWizardInputs();
+  const f=S.wForm;
+  if(!f.projekt){ toast("⚠️ Válassz projektet!"); return; }
+  try{
+    await window.FB.naploMent(f);
+    S.wForm=freshForm(); S.wStep=1; S.wSearch=""; S.wOpenKat={};
+    toast("✓ Bejegyzés mentve!"); S.tab="naplo"; render();
+  }catch(e){ toast("❌ Hiba: "+e.message); }
+};
+
+window.naploTorol=async(id)=>{
+  if(!confirm("Törlöd ezt a bejegyzést?")) return;
+  try{ await window.FB.naploTorol(id); toast("Törölve."); } catch(e){ toast("❌ Hiba!"); }
+};
+
+window.ujProjektMent=async()=>{
+  const nev=$("prjNev")?.value.trim();
+  if(!nev){ alert("Add meg a projekt nevét!"); return; }
+  try{
+    await window.FB.projektMent({nev, helyszin:$("prjHely")?.value||"", megrendelo:$("prjMegr")?.value||"", kezdes:$("prjKezdes")?.value||today(), leiras:$("prjLeiras")?.value||""});
+    S.ujPrjModal=false; toast("✓ Projekt létrehozva!"); render();
+  }catch(e){ toast("❌ Hiba: "+e.message); }
+};
+
+window.prjTorol=async(id,nev)=>{
+  if(!confirm(`Töröljük a "${nev}" projektet?`)) return;
+  try{ await window.FB.projektTorol(id); toast("Projekt törölve."); } catch(e){ toast("❌ Hiba!"); }
+};
+
+window.togglePrjDok=(id)=>{
+  if(S.selectedPrj?.id===id){ S.selectedPrj=null; S.prjDokumentumok=[]; if(S.prjDokUnsub){S.prjDokUnsub();S.prjDokUnsub=null;} render(); return; }
+  const p=S.projektek.find(x=>x.id===id); S.selectedPrj=p; S.prjDokumentumok=[];
+  if(S.prjDokUnsub) S.prjDokUnsub();
+  S.prjDokUnsub=window.FB.dokFigyel(id,(docs)=>{ S.prjDokumentumok=docs; render(); });
+  render();
+};
+
+window.dokFeltolt=async(prjId,input)=>{
+  const file=input.files[0]; if(!file) return;
+  toast("⏳ Feltöltés…");
+  try{ await window.FB.dokFeltolt(prjId,file); toast("✓ Dokumentum feltöltve!"); } catch(e){ toast("❌ Hiba: "+e.message); }
+  input.value="";
+};
+
+window.dokTorol=async(prjId,docId,path)=>{
+  if(!confirm("Töröljük ezt a dokumentumot?")) return;
+  try{ await window.FB.dokTorol(prjId,docId,path); toast("Dokumentum törölve."); } catch(e){ toast("❌ Hiba!"); }
+};
+
+window.pinCheck=()=>{
+  const inp=$("pinInp"); if(!inp) return;
+  if(inp.value===S.adminPin){ S.isAdmin=true; S.pinModal=false; S.tab="admin"; render(); }
+  else{ const err=$("pinErr"); if(err)err.textContent="Helytelen PIN!"; inp.value=""; setTimeout(()=>{if(err)err.textContent=""},1500); }
+};
+
+window.adminLogout=()=>{ S.isAdmin=false; S.tab="rogzit"; render(); };
+
+window.pinMentes=async()=>{
+  const p1=$("ujPin")?.value, p2=$("ujPin2")?.value;
+  if(!p1||p1.length<4){ toast("⚠️ Min. 4 karakter szükséges!"); return; }
+  if(p1!==p2){ toast("⚠️ A két PIN nem egyezik!"); return; }
+  try{
+    await window.FB.beallitasokMent({pin:p1});
+    S.adminPin=p1; toast("✓ PIN sikeresen módosítva!");
+  }catch(e){ toast("❌ Hiba: "+e.message); }
+};
+
+window.exportCSV=()=>{
+  const lines=["Dátum;Projekt;Létszám;Munkaóra;Tevékenységek;Felhasznált anyagok;Igényelt anyagok;Megjegyzés"];
+  S.naplo.forEach(n=>{
+    const br=n.brigad||n.munkasok||[];
+    lines.push([n.datum,n.projekt,br.length,br.reduce((s,m)=>s+Number(m.munkaorák||0),0),(n.aktivitasok||[]).join(", "),(n.felhasznaltAnyagok||[]).map(a=>`${a.nev} ${a.mennyiseg}${a.egyseg}`).join(", "),(n.igenyeltAnyagok||[]).map(a=>`${a.nev} ${a.mennyiseg}${a.egyseg}`).join(", "),n.megjegyzes||""].join(";"));
+  });
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob(["\uFEFF"+lines.join("\n")],{type:"text/csv;charset=utf-8"}));
+  a.download=`coolvarko-naplo-${today()}.csv`; a.click();
+};
+
+window.exportJSON=()=>{
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([JSON.stringify({naplo:S.naplo,projektek:S.projektek,exportDatum:new Date().toISOString()},null,2)],{type:"application/json"}));
+  a.download=`coolvarko-naplo-${today()}.json`; a.click();
+};
+
+window.cacheTorol=()=>{ if(confirm("Töröljük a helyi gyorsítótárat?")){ localStorage.clear(); sessionStorage.clear(); toast("Cache törölve."); } };
+
+window.installApp=async()=>{
+  if(S.installPrompt){ await S.installPrompt.prompt(); S.installPrompt=null; S.showInstall=false; render(); }
+};
+
+// ── PWA & lifecycle ────────────────────────────────────────────────────────
+window.addEventListener("beforeinstallprompt",(e)=>{ e.preventDefault(); S.installPrompt=e; S.showInstall=true; render(); });
+window.addEventListener("online",()=>{ S.online=true; render(); });
+window.addEventListener("offline",()=>{ S.online=false; render(); });
+
+// ── Firebase init ──────────────────────────────────────────────────────────
+document.addEventListener("firebase-ready", async()=>{
+  if(!S.wForm) S.wForm=freshForm();
+
+  // Admin PIN betöltése
+  try{ const b=await window.FB.beallitasokLeker(); S.adminPin=b.pin||"1234"; } catch(e){}
+
+  // Valós idejű listenrek
+  S._naploUnsub=window.FB.naploFigyel((data)=>{ S.naplo=data; render(); });
+  S._prjUnsub=window.FB.projektekFigyel((data)=>{ S.projektek=data; if(S.wForm&&!S.wForm.projekt&&data.length) S.wForm.projekt=data[0].nev; render(); });
+
+  render();
+});
+
+// Service Worker regisztráció
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+</script>
+</body>
+</html>
