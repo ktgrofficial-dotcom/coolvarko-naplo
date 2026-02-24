@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="hu">
 <head>
   <meta charset="UTF-8"/>
@@ -15,26 +15,506 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet"/>
 
-  <!-- Firebase SDKs -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import {
-      getFirestore, collection, addDoc, deleteDoc, doc,
-      query, orderBy, onSnapshot, setDoc, getDoc
-    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-    import {
-      getStorage, ref, uploadBytes, getDownloadURL, deleteObject
-    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-
-    // ══════════════════════════════════════════════════════════════
-    // !! FIREBASE KONFIGURÁCIÓ — IDE ÍROD BE A SAJÁTODAT !!
-    // Lépések: console.firebase.google.com → Projekt → Web app
-    // ══════════════════════════════════════════════════════════════
+    import { getFirestore, collection, addDoc, deleteDoc, doc, query, orderBy, onSnapshot, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
     const firebaseConfig = {
       apiKey: "AIzaSyDBUNmqnDZszO7tMS8kR8Y5UWAfFnXalzM",
       authDomain: "coolvarko-kft.firebaseapp.com",
       projectId: "coolvarko-kft",
       storageBucket: "coolvarko-kft.firebasestorage.app",
+      messagingSenderId: "334119129410",
+      appId: "1:334119129410:web:430a7b2ec7f0f72ec4f8db"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    window.FB = {
+      naploFigyel: (cb) => { const q = query(collection(db,"naplo"), orderBy("datum","desc")); return onSnapshot(q, snap => cb(snap.docs.map(d=>({id:d.id,...d.data()})))); },
+      naploMent: (adat) => addDoc(collection(db,"naplo"), {...adat, rogzitve: new Date().toISOString()}),
+      naploTorol: (id) => deleteDoc(doc(db,"naplo",id)),
+      projektekFigyel: (cb) => onSnapshot(collection(db,"projektek"), snap => cb(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.nev||"").localeCompare(b.nev||"")))),
+      projektMent: (adat) => addDoc(collection(db,"projektek"), {...adat, letrehozva: new Date().toISOString()}),
+      projektTorol: (id) => deleteDoc(doc(db,"projektek",id)),
+      beallitasokLeker: async () => { const d = await getDoc(doc(db,"beallitasok","admin")); return d.exists() ? d.data() : {pin:"1234"}; },
+      beallitasokMent: (adat) => setDoc(doc(db,"beallitasok","admin"), adat),
+    };
+    document.dispatchEvent(new Event("firebase-ready"));
+  </script>
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#0d1014;--s1:#161a22;--s2:#1e2430;--brd:#2a3244;--acc:#7ec800;--acd:#5a9200;--a2:#3b82f6;--red:#ef4444;--grn:#22c55e;--amber:#f59e0b;--txt:#e8eaf0;--t2:#8b93a8;--t3:#4a5268;--r:10px;}
+    html,body{height:100%;overflow:hidden}
+    body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--txt);display:flex;justify-content:center}
+    #app{width:100%;max-width:480px;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+    .hdr{background:var(--s1);border-bottom:3px solid var(--acc);padding:8px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px}
+    .hdr-r{display:flex;align-items:center;gap:6px;flex-shrink:0}
+    .hdr-date{font-size:11px;color:var(--t2);background:var(--s2);padding:4px 8px;border-radius:6px;white-space:nowrap}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--grn);flex-shrink:0}.dot.off{background:var(--red)}
+    .nav{display:flex;background:var(--s1);border-top:1px solid var(--brd);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom)}
+    .nb{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 2px 8px;border:none;background:none;color:var(--t3);cursor:pointer;font-size:9px;font-family:'Barlow',sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.5px;border-top:2px solid transparent;-webkit-tap-highlight-color:transparent}
+    .nb.on{color:var(--acc);border-top-color:var(--acc)}.nb.adm.on{color:var(--amber);border-top-color:var(--amber)}
+    .cnt{flex:1;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch}
+    .card{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:15px;margin-bottom:11px}
+    .ctit{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;letter-spacing:.5px;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+    .fld{margin-bottom:11px}
+    .lbl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t2);margin-bottom:5px}
+    .inp,.sel,.ta{width:100%;background:var(--s2);border:1px solid var(--brd);border-radius:8px;color:var(--txt);font-family:'Barlow',sans-serif;font-size:15px;padding:10px 12px;transition:border-color .15s;appearance:none;-webkit-appearance:none}
+    .inp:focus,.sel:focus,.ta:focus{outline:none;border-color:var(--acc)}
+    .ta{resize:vertical;min-height:64px}
+    .sel{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b93a8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;padding-right:34px}
+    .r2{display:flex;gap:8px}.r2>*{flex:1}
+    .btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 16px;border-radius:8px;border:none;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;width:100%;-webkit-tap-highlight-color:transparent;transition:opacity .15s}
+    .btn:active{opacity:.8}
+    .btn-p{background:var(--acc);color:#0d1014}.btn-s{background:var(--s2);color:var(--txt);border:1px solid var(--brd)}.btn-amb{background:var(--amber);color:#0d1014}
+    .btn-d{background:transparent;color:var(--red);border:1px solid rgba(239,68,68,.35);padding:5px 9px;width:auto;font-size:11px;border-radius:6px}
+    .btn-ic{width:auto;padding:9px 11px}
+    .steps{display:flex;gap:4px;margin-bottom:16px}
+    .step{flex:1;text-align:center;padding:6px 2px;border-radius:6px;font-size:10px;font-weight:700;text-transform:uppercase;background:var(--s1);color:var(--t3);border:1px solid var(--brd);}
+    .step.on{background:var(--acc);color:#0d1014;border-color:var(--acc)}.step.dn{border-color:var(--acd);color:var(--acd)}
+    /* Aktivitás picker */
+    .srch-w{position:relative;margin-bottom:9px}
+    .srch-ic{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--t3);pointer-events:none}
+    .srch-w .inp{padding-left:33px}
+    .kath{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:var(--acc);margin:9px 0 4px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:4px 6px;border-radius:6px;-webkit-tap-highlight-color:transparent}
+    .karr{transition:transform .2s}.karr.op{transform:rotate(180deg)}
+    .pg{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:3px}
+    .pill{display:inline-flex;align-items:center;background:var(--s2);border:1px solid var(--brd);border-radius:20px;padding:4px 10px;font-size:12px;color:var(--t2);cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
+    .pill.on{background:var(--acc);border-color:var(--acc);color:#0d1014;font-weight:700}
+    /* Munkás kártya */
+    .wcard{background:var(--s2);border:1px solid var(--brd);border-radius:var(--r);margin-bottom:10px}
+    .wcard-h{display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .wcard-body{padding:12px;border-top:1px solid var(--brd)}
+    /* Log */
+    .le{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:13px;margin-bottom:9px}
+    .leh{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:7px}
+    .lp{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--acc);text-transform:uppercase;letter-spacing:.5px}
+    .ld{font-size:12px;color:var(--t2);margin-top:1px}
+    .lt{display:inline-block;background:var(--s2);border-radius:4px;padding:2px 6px;font-size:12px;color:var(--t2);margin:2px}
+    .lt.w{color:var(--a2)}.lt.m{color:var(--grn)}.lt.r{color:var(--acc)}
+    /* Stats */
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px}
+    .stat{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:13px}
+    .sv{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:800;color:var(--acc);line-height:1}
+    .sl{font-size:11px;color:var(--t2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+    .badge{display:inline-flex;align-items:center;justify-content:center;background:var(--acc);color:#0d1014;border-radius:99px;font-size:10px;font-weight:800;min-width:17px;height:17px;padding:0 4px}
+    .stit{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:19px;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;border-left:3px solid var(--acc);padding-left:9px}
+    .stit.amb{border-left-color:var(--amber)}
+    .divd{border:none;border-top:1px solid var(--brd);margin:13px 0}
+    .rb{background:rgba(126,200,0,.07);border:1px solid rgba(126,200,0,.22);border-radius:8px;padding:8px 11px;margin-bottom:7px;display:flex;align-items:center;justify-content:space-between}
+    .rbn{font-weight:600;font-size:14px}.rba{font-family:'Barlow Condensed',sans-serif;font-weight:700;color:var(--acc);font-size:15px}
+    .fb{display:flex;gap:7px;margin-bottom:13px;overflow-x:auto;padding-bottom:3px;scrollbar-width:none}
+    .fb::-webkit-scrollbar{display:none}
+    .fbb{flex-shrink:0;padding:6px 11px;border-radius:99px;border:1px solid var(--brd);background:var(--s2);color:var(--t2);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:'Barlow',sans-serif;-webkit-tap-highlight-color:transparent}
+    .fbb.on{background:var(--acc);border-color:var(--acc);color:#0d1014}
+    .empty{text-align:center;padding:38px 18px;color:var(--t3)}
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:300;display:flex;align-items:center;justify-content:center;padding:18px}
+    .modal{background:var(--s1);border:1px solid var(--brd);border-radius:14px;padding:22px;width:100%;max-width:360px;max-height:90dvh;overflow-y:auto}
+    .modal-tit{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:19px;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+    .adm-card{background:var(--s1);border:1px solid rgba(245,158,11,.28);border-radius:var(--r);padding:14px;margin-bottom:11px}
+    .toast{position:fixed;bottom:calc(62px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:var(--acc);color:#0d1014;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;padding:9px 20px;border-radius:99px;z-index:400;white-space:nowrap;pointer-events:none;animation:fio 2.5s forwards}
+    @keyframes fio{0%{opacity:0;transform:translateX(-50%) translateY(8px)}12%{opacity:1;transform:translateX(-50%)}75%{opacity:1}100%{opacity:0}}
+    .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100dvh;gap:14px;color:var(--t2);font-size:14px}
+    .spinner{width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--brd);border-radius:99px}
+  </style>
+</head>
+<body>
+<div id="app"><div class="loading"><div class="spinner"></div><span>Coolvarko Napló betöltése…</span></div></div>
+<script>
+const AKTIVITASOK = {
+  "Alapozás, Földmunka, Vasalás":["Épület kitűzés","Föld kitermelés, deponálás","Kézi árokásás (talajosztály 1-2)","Sávalap alapárok gépi kiemelése","Pontalap gödör gépi kiemelése","Pince gödör gépi kiemelés","Sávalap alapásás","Sávalap árok kézi tisztítása","Sóder/kavics feltöltés + tömörítés","Földfeltöltés, tömörítés","Föld elszállítása, sóder beszállítása","Sávalap vasalás","Szerelőbeton vasalás","Hegesztett háló fektetése 100×100 mm","Hegesztett háló fektetése 150×150 mm","Kézi fúrás, furat Ø25 cm-ig"],
+  "Betonozási Munkák":["Alapbetonozás gépi","Sávalap betonozás (mixerbetonnal)","Sávalap betonozás (kézileg)","Kézi betonozás általános","Aljzatbetonozás 6cm-ig","Kézi bedolgozású aljzatbeton max 7 cm","Vastag alapléteg betonozása 100 mm-ig","Vastag alapléteg betonozása 150 mm-ig","Vastag alapléteg betonozása 200 mm-ig","Szerelőbetonozás","Térbetonozás / járda, kocsibeálló","Betonozás kézi keveréssel","Mennyezeti födém bezsaluzása","Doka, Peri rendszer szétszerelése","Egyenes lépcső zsaluzatának beépítése","Lépcsőzsaluzat szétszerelése","Gépi esztrich – cementes","Gépi esztrich – anhidrit önterülő","Kerámia mennyezet beépítése"],
+  "Koszorú, Zsalukő és Zsaluzás":["Vaskoszorú szerelés","Vasbeton koszorú","Zsalukövezés 15-ös","Zsalukövezés 20-as","Zsalukövezés 30-as","Zsalukövezés 40-es","Lábazat készítés zsalukőből (1 sor)","Zsaluzás táblásított","Zsaluzás egyoldali","Zsaluzás kétoldali falzsalu","Zsaluzás pillér"],
+  "Falazás":["Főfalazás 25-as","Főfalazás 30-as","Főfalazás 38-as","Főfalazás 44-es","Falazás durva szerkezet 30cm (Porotherm/Ytong)","Körülhatároló falak téglafalazása 30cm-ig","Válaszfalazás 10-es","Válaszfal falazása max 12,5 cm","Üvegtégla rakás","Terméskő rakás","Burkoló / kistégla rakás","Pillérek készítése kistéglából","Vasbeton pillér készítés","Áthidalók beépítése","Monolit áthidaló (zsalu+vasalás+beton)","Monolit lépcső (110cm szélesig)","Samott kémény kerámia béléssel","Schiedel kémény kerámia béléssel","Kerítésépítés hagyományos"],
+  "Födém és Tetőszerkezet":["E-gerendás födém","Porotherm födém","Monolit födém","Tetőtér szigetelés (szerkezet+fólia+karton)"],
+  "Vakolás":["Kézi vakolás durvázva (mész-cement)","Kézi vakolás simítva","Gépi vakolás mész-cement","Finom mész-cement vakolat (Feinputz)","Gipsz/glett vakolat","Külső vakolatok","Simító vakolat beltér/kültér","Mennyezetivakolat simítása","Falvakolat simítása","Gipszelés – bandázsolás","Élvédőzés","Ablakkáva"],
+  "Hőszigetelés és Homlokzat":["Homlokzati hőszigetelés EPS polisztirol","Homlokzati hőszigetelés ásványgyapot","ETICS komplett rendszer 20cm-ig","Komplett dryvitolás (10cm)","Külső falak vakolása vékonyrétegű kapart 2mm","Külső falak bevonása üvegtextil ráccsal","Homlokzatszínezés alapozással","Kőporozás","Viakolorozás","Dryvitolás + színezés 10 cm","Tetőtér hőszigetelés","Állványozás / emelvény","Szellőzőrács beépítése"],
+  "Gipszkarton Szerelés":["GK válaszfal 2×2 réteg + szigetelés","GK válaszfal 2×1 réteg + szigetelés","GK előtétfal 2 réteg + szigetelés","GK előtétfal 1 réteg + szigetelés","GK előtétfal ragasztva","Álmennyezet 2 réteg + szigetelés + fólia","Álmennyezet 1 réteg + szigetelés + fólia","Álmennyezet 1 réteg","Álmennyezet minerál/kazettás","GK ferde síkok és mennyezetek tetőtérben","Párazáró fólia beépítése GK álmennyezetbe","GK válaszfal Knauf Habito","GK válaszfal Knauf Diamant","Dobozolás + rejtett világítás","Íves falak GK"],
+  "Festési Munkák":["Régi festék lekaparása","Régi olajfesték lekaparása","Falfix mélyalapozó felhordása","Festés fal alapozása (2x fehér festék)","Falfestés színes bevonat","Sarokgyöngyök felszerelése","Falak tapétázása","Velencei stukkó polírozott simítóval","Repedések kijavítása falakon és mennyezeten","Csatlakozások akrilációja","Fűtéscsövek festése","Radiátorok festése"],
+  "Burkolási Munkák":["Aljzat kiegyenlítés","Csempefektetés max 60cm-es lapok","Csempefektetés Gres 60cm felett","Csempefektetés nagyméretű 60×120 cm","Csempefektetés nagyméretű 120×260 cm","Oldalfalburkolás csempe","Pillérburkolás","Lépcsőburkolás","Diagonál burkolás","Márványburkolás","Mozaik csempézés","Természetes / műkő / klinkertégla burkolat","Lábazatburkolás","Szilikonozás / sarkok szilikonozása","Csempe és járólap fugázása","Vízszigetelő bevonat (fürdő, mosdó, zuhany)","Hagyományos parkettázás","Laminált parkettázás + szegély","Szőnyegpadló + szegély","PVC padló + szegély","Szegélyezések","Kád felszerelése + lefolyó","Kád körbefalazása","Geberit WC-készülék beépítése + körbefalazás","Mosdó felszerelése","Csaptelep felszerelése"],
+  "Vízvezeték-szerelés":["Vízvezeték-szerelés komplett (lakás)","Vájatok vágása vízvezetékekhez","Falak lehúzása vízvezeték-szerelés után","Geberit szerkezet szerelése","Zuhanykabin üvegének beszerelése","Ellenőrző ajtók beépítése","Mosdókagyló felszerelése","Keverőtest felszerelése (iBox)","Keverőcsapok felszerelése mosdó/mosogató","Keverőcsap felszerelése kád","Végszelepek szerelése"],
+  "Térkő és Szegélyek":["Térkő felszedése","Aljzat előkészítése / kiegyenlítése","Aljzat lenyomása rezgőlappal","Durva alapréteg készítése","Térkő lerakása 4–6 cm vastag","Parkszegély beépítése","Útszegély beépítése","Térkő vágása","Vízlevezető folyóka betonba ágyazása","Szegélykövek beépítése"],
+  "Bontási Munkák":["Csempék bontása","Válaszfalak lebontása - tégla","Tömör tégla falazat bontása","Vasbeton lemez bontása","Régi úsztatott padló eltávolítása","Kád leszerelése","Beépített szekrények bontása","Régi konyhabútor bontása","Fémajtóráma lebontása"],
+  "Vízszigetelés / Alapfal Védelem":["Kátrány-/bitumenes lemez felhelyezése 1 réteg","Dörken drénlemez (Delta-MS) beépítés","Alapfal vízszigetelés komplett","Alapfal vízszigetelés kétrétegű víznyomás elleni","Aszfalt szigetelés (IPA) hegesztéssel","Vízszigetelő bevonat kenhető (fürdő)","Vízszigetelő szalagok sarkokra","Szigetelés GV4 lemezzel"],
+};
+const EGYSEGEK=["m²","m³","fm","db","kg","t","zsák","l","óra"];
+const ANYAGOK=["Beton C16/20","Beton C20/25","Beton C25/30","Tégla (normál)","Tégla (porotherm)","Blokktégla","Zsalukő 15","Zsalukő 20","Zsalukő 30","Zsalukő 40","Cement","Mész","Gipsz","Vakolat gépi","Vakolat kézi","Betonacél Ø8","Betonacél Ø10","Betonacél Ø12","Betonacél Ø16","Hegesztett háló","Zsalu deszka","Zsalu tábla","Állvány elem","Vízszigetelő fólia","Bitumen lemez","Delta-MS drénlemez","XPS szigetelés","EPS szigetelés","Ásványgyapot","Gipszkarton lap","GK profil","Csempe","Járólap","Parketta","Laminált padló","Fugázó","Szilikon","Homok","Kavics","Zúzott kő"];
+
+const S={tab:"rogzit",isAdmin:false,adminSubTab:"projektek",naplo:[],projektek:[],naploFilter:"Mind",wStep:1,wForm:null,wSearch:{},wOpenKat:{},wOpenW:-1,ujPrjModal:false,pinModal:false,online:navigator.onLine,toastMsg:null,adminPin:"1234"};
+
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+const today=()=>new Date().toISOString().split("T")[0];
+const fmt=(d)=>new Date(d).toLocaleDateString("hu-HU");
+const freshWorker=()=>({id:uid(),nev:"",munkaorák:8,aktivitasok:[],felhasznaltAnyagok:[],igenyeltAnyagok:[]});
+const freshForm=()=>({datum:today(),projekt:S.projektek[0]?.nev||"",brigad:[freshWorker()],megjegyzes:""});
+function toast(msg){S.toastMsg=msg;render();setTimeout(()=>{S.toastMsg=null;render();},2400);}
+
+const IC={plus:"M12 5v14M5 12h14",list:"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",chart:"M18 20V10M12 20V4M6 20v-6",shield:"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",trash:"M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2",search:"M21 21l-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0",chev:"M6 9l6 6 6-6",lock:"M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4",dl:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",user:"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"};
+const icon=(n,sz=20,c="currentColor")=>`<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${(IC[n]||"").split("M").filter(Boolean).map(s=>`<path d="M${s}"/>`).join("")}</svg>`;
+const LOGO=`<svg height="46" viewBox="0 0 460 118" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><defs><linearGradient id="lgr" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#555"/><stop offset="45%" stop-color="#bbb"/><stop offset="55%" stop-color="#ddd"/><stop offset="100%" stop-color="#555"/></linearGradient><linearGradient id="lgt" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#e0ff55"/><stop offset="28%" stop-color="#9ed400"/><stop offset="65%" stop-color="#5c9400"/><stop offset="100%" stop-color="#2e5000"/></linearGradient></defs><polyline points="28,72 230,12 432,72" fill="none" stroke="url(#lgr)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="28" y1="88" x2="432" y2="88" stroke="url(#lgr)" stroke-width="2.5"/><rect x="22" y="86" width="13" height="5" rx="1.5" fill="url(#lgr)"/><rect x="425" y="86" width="13" height="5" rx="1.5" fill="url(#lgr)"/><text x="230" y="79" text-anchor="middle" font-family="'Arial Black','Impact',sans-serif" font-weight="900" font-size="51" fill="url(#lgt)" stroke="#1a3d00" stroke-width="1" letter-spacing="2">COOLVARKO</text><text x="230" y="110" text-anchor="middle" font-family="Arial,sans-serif" font-weight="300" font-size="11" fill="#666" letter-spacing="8">— KFT —</text></svg>`;
+
+// ── Aktivitás picker munkásonként ──────────────────────────────────────────
+function aktPicker(wi){
+  const w=S.wForm.brigad[wi], sel=w.aktivitasok||[], srch=(S.wSearch[wi]||"").toLowerCase(), ok=S.wOpenKat[wi]||{};
+  const filt=srch?Object.fromEntries(Object.entries(AKTIVITASOK).map(([k,v])=>[k,v.filter(a=>a.toLowerCase().includes(srch))]).filter(([,v])=>v.length)):AKTIVITASOK;
+  let h=`<div class="srch-w"><span class="srch-ic">${icon("search",15)}</span>
+    <input class="inp" placeholder="Keresés a tevékenységek között…" value="${(S.wSearch[wi]||"").replace(/"/g,"&quot;")}"
+      oninput="S.wSearch[${wi}]=this.value;render()" style="padding-left:33px"/></div>`;
+  if(sel.length) h+=`<div style="padding:6px 10px;background:rgba(126,200,0,.1);border:1px solid rgba(126,200,0,.3);border-radius:8px;font-size:12px;margin-bottom:8px"><span style="color:var(--acc);font-weight:700">${sel.length} kiválasztva:</span> <span style="color:var(--t2);font-size:11px">${sel.slice(0,3).join(", ")}${sel.length>3?"…":""}</span></div>`;
+  for(const [kat,items] of Object.entries(filt)){
+    const isOpen=srch||ok[kat], cnt=items.filter(a=>sel.includes(a)).length;
+    h+=`<div class="kath" onclick="S.wOpenKat[${wi}]=S.wOpenKat[${wi}]||{};S.wOpenKat[${wi}]['${kat.replace(/'/g,"\\'")}']=!S.wOpenKat[${wi}]['${kat.replace(/'/g,"\\'")}'];render()">
+      <span>${kat}${cnt?`<span class="badge" style="margin-left:6px">${cnt}</span>`:""}</span>
+      <span class="karr ${isOpen?"op":""}">${icon("chev",14)}</span></div>`;
+    if(isOpen) h+=`<div class="pg">${items.map(a=>`<div class="pill ${sel.includes(a)?"on":""}" onclick="wToggleAkt(${wi},'${a.replace(/'/g,"\\'")}')"><span>${a}</span></div>`).join("")}</div>`;
+  }
+  return h;
+}
+
+// ── Anyag sorok ────────────────────────────────────────────────────────────
+function anyagSorok(wi, t){
+  const key=t==="f"?"felhasznaltAnyagok":"igenyeltAnyagok", arr=S.wForm.brigad[wi][key]||[];
+  const col=t==="f"?"var(--grn)":"var(--acc)", lbl=t==="f"?"Felhasznált":"Igényelt";
+  return arr.map((a,i)=>`<div style="background:var(--bg);border:1px solid var(--brd);border-radius:8px;padding:10px;margin-bottom:7px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+      <span style="font-size:11px;color:${col};font-weight:700">${lbl} #${i+1}</span>
+      <button class="btn btn-d" onclick="wRemA(${wi},'${t}',${i})">✕</button>
+    </div>
+    <div class="fld" style="margin-bottom:7px">
+      <input list="dal${wi}${t}${i}" class="inp" placeholder="Anyag neve…" value="${a.nev}" oninput="wUpdA(${wi},'${t}',${i},'nev',this.value)"/>
+      <datalist id="dal${wi}${t}${i}">${ANYAGOK.map(x=>`<option value="${x}"/>`).join("")}</datalist>
+    </div>
+    <div class="r2">
+      <input type="number" class="inp" placeholder="Mennyiség" min="0" step="0.1" value="${a.mennyiseg}" oninput="wUpdA(${wi},'${t}',${i},'mennyiseg',this.value)"/>
+      <select class="sel" onchange="wUpdA(${wi},'${t}',${i},'egyseg',this.value)">${EGYSEGEK.map(e=>`<option${a.egyseg===e?" selected":""}>${e}</option>`).join("")}</select>
+    </div></div>`).join("");
+}
+
+// ── WIZARD ─────────────────────────────────────────────────────────────────
+function renderWizard(){
+  if(!S.wForm)S.wForm=freshForm();
+  const f=S.wForm, steps=["Alap","Brigád","Összesítés"];
+  let h=`<div class="stit">Napi bejegyzés</div><div class="steps">${steps.map((s,i)=>`<div class="step ${S.wStep===i+1?"on":S.wStep>i+1?"dn":""}">${s}</div>`).join("")}</div>`;
+
+  if(S.wStep===1){
+    const opts=S.projektek.map(p=>`<option value="${p.nev}"${f.projekt===p.nev?" selected":""}>${p.nev}</option>`).join("");
+    h+=`<div class="card"><div class="ctit"><span style="color:var(--acc)">1.</span> Alapadatok</div>
+      <div class="fld"><label class="lbl">Dátum</label><input type="date" class="inp" id="wD" value="${f.datum}"/></div>
+      <div class="fld"><label class="lbl">Projekt</label><div class="r2" style="gap:6px">
+        <select class="sel" id="wP">${opts}</select>
+        <button class="btn btn-s btn-ic" onclick="S.ujPrjModal=true;render()">${icon("plus",18)}</button>
+      </div></div>
+      <div class="fld"><label class="lbl">Megjegyzés</label><textarea class="ta" id="wM" placeholder="Napi megjegyzések, időjárás…">${f.megjegyzes}</textarea></div>
+      <button class="btn btn-p" onclick="wNext()">Tovább: Brigád →</button>
+    </div>`;
+  }
+
+  else if(S.wStep===2){
+    const totalH=f.brigad.reduce((s,w)=>s+Number(w.munkaorák||0),0);
+    const totalA=f.brigad.reduce((s,w)=>s+(w.aktivitasok||[]).length,0);
+    h+=`<div class="card"><div class="ctit"><span style="color:var(--acc)">2.</span> Brigád tagok</div>
+      <div style="padding:10px 13px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.3);border-radius:8px;margin-bottom:13px;font-size:14px">
+        👷 <strong style="color:var(--a2)">${f.brigad.length} fő</strong> · <strong style="color:var(--acc)">${totalH} óra</strong> · <strong style="color:var(--grn)">${totalA} tevékenység</strong>
+      </div>`;
+
+    f.brigad.forEach((w,wi)=>{
+      const isOpen=S.wOpenW===wi, ac=(w.aktivitasok||[]).length, fc=(w.felhasznaltAnyagok||[]).length+(w.igenyeltAnyagok||[]).length;
+      h+=`<div class="wcard"><div class="wcard-h" onclick="S.wOpenW=S.wOpenW===${wi}?-1:${wi};render()">
+        <div><div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:7px">
+          ${icon("user",15,"var(--a2)")} ${w.nev||`#${wi+1} Munkás`} ${ac?`<span class="badge">${ac}</span>`:""}
+        </div>
+        <div style="font-size:12px;color:var(--t2);margin-top:2px">${w.munkaorák} óra${fc?` · ${fc} anyag`:""}</div></div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${f.brigad.length>1?`<button class="btn btn-d" style="padding:4px 8px" onclick="event.stopPropagation();wRemW(${wi})">${icon("trash",13)}</button>`:""}
+          <span class="karr ${isOpen?"op":""}">${icon("chev",16)}</span>
+        </div></div>`;
+      if(isOpen) h+=`<div class="wcard-body">
+        <div class="r2" style="margin-bottom:11px">
+          <div><label class="lbl">Név</label><input class="inp" placeholder="Munkás neve" value="${w.nev}" oninput="S.wForm.brigad[${wi}].nev=this.value"/></div>
+          <div><label class="lbl">Munkaóra</label><input type="number" class="inp" min="1" max="16" step="0.5" value="${w.munkaorák}" oninput="S.wForm.brigad[${wi}].munkaorák=Number(this.value)"/></div>
+        </div>
+        <hr class="divd" style="margin:10px 0"/>
+        <div style="font-size:12px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Elvégzett munkák</div>
+        ${aktPicker(wi)}
+        <hr class="divd" style="margin:12px 0"/>
+        <div style="font-size:12px;font-weight:700;color:var(--grn);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">✅ Felhasznált anyagok</div>
+        ${anyagSorok(wi,"f")}
+        <button class="btn btn-s" style="margin-bottom:13px" onclick="wAddA(${wi},'f')">+ Felhasznált anyag</button>
+        <div style="font-size:12px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">⚡ Igényelt anyagok (holnapra)</div>
+        ${anyagSorok(wi,"i")}
+        <button class="btn btn-s" onclick="wAddA(${wi},'i')">+ Anyagigény</button>
+      </div>`;
+      h+=`</div>`;
+    });
+
+    h+=`<button class="btn btn-s" style="margin-top:6px;margin-bottom:13px" onclick="wAddW()">${icon("plus",16)} Munkás hozzáadása</button>
+    <hr class="divd"/><div class="r2">
+      <button class="btn btn-s" onclick="wPrev()">← Vissza</button>
+      <button class="btn btn-p" onclick="wNext()">Összesítés →</button>
+    </div></div>`;
+  }
+
+  else if(S.wStep===3){
+    const totalH=f.brigad.reduce((s,w)=>s+Number(w.munkaorák||0),0);
+    h+=`<div class="card"><div class="ctit"><span style="color:var(--acc)">3.</span> Összesítés</div>
+      <div style="padding:12px;background:var(--s2);border-radius:8px;margin-bottom:13px">
+        <div style="font-weight:700;font-size:15px;color:var(--acc)">${f.projekt}</div>
+        <div style="font-size:13px;color:var(--t2)">${fmt(f.datum)} · ${f.brigad.length} fő · ${totalH} óra</div>
+      </div>
+      ${f.brigad.map(w=>`<div style="padding:10px;background:var(--s2);border-radius:8px;margin-bottom:7px;border:1px solid var(--brd)">
+        <div style="font-weight:700;font-size:14px;margin-bottom:5px">${w.nev||"(névtelen)"} — ${w.munkaorák} óra</div>
+        ${(w.aktivitasok||[]).length?`<div style="margin-bottom:4px">${w.aktivitasok.map(a=>`<span class="lt">${a}</span>`).join("")}</div>`:""}
+        ${(w.felhasznaltAnyagok||[]).length?`<div>${w.felhasznaltAnyagok.map(a=>`<span class="lt m">${a.nev} ${a.mennyiseg} ${a.egyseg}</span>`).join("")}</div>`:""}
+        ${(w.igenyeltAnyagok||[]).length?`<div>${w.igenyeltAnyagok.map(a=>`<span class="lt r">⚡${a.nev} ${a.mennyiseg} ${a.egyseg}</span>`).join("")}</div>`:""}
+      </div>`).join("")}
+      ${f.megjegyzes?`<div style="padding:10px;background:var(--s2);border-radius:8px;font-size:13px;color:var(--t2);border:1px solid var(--brd);margin-bottom:13px">📝 ${f.megjegyzes}</div>`:""}
+      <hr class="divd"/>
+      <button class="btn btn-p" onclick="wMentes()" style="margin-bottom:8px">✓ Bejegyzés mentése</button>
+      <button class="btn btn-s" onclick="wPrev()">← Vissza</button>
+    </div>`;
+  }
+  return h;
+}
+
+// ── Napló ──────────────────────────────────────────────────────────────────
+function renderNaplo(){
+  const all=S.naplo, projektek=["Mind",...new Set(all.map(n=>n.projekt))];
+  const filtered=S.naploFilter==="Mind"?all:all.filter(n=>n.projekt===S.naploFilter);
+  let h=`<div class="stit">Napló</div><div class="fb">${projektek.map(p=>`<button class="fbb ${S.naploFilter===p?"on":""}" onclick="S.naploFilter='${p.replace(/'/g,"\\'")}';render()">${p}</button>`).join("")}</div>`;
+  if(!filtered.length) return h+`<div class="empty"><p>Még nincs bejegyzés</p></div>`;
+  filtered.forEach(n=>{
+    const brigad=n.brigad||[], totalH=brigad.reduce((s,w)=>s+Number(w.munkaorák||0),0);
+    const allF=brigad.flatMap(w=>w.felhasznaltAnyagok||[]), allI=brigad.flatMap(w=>w.igenyeltAnyagok||[]);
+    h+=`<div class="le"><div class="leh"><div>
+      <div class="lp">${n.projekt}</div><div class="ld">${fmt(n.datum)}</div>
+    </div><button class="btn btn-d" onclick="naploTorol('${n.id}')">${icon("trash",13)}</button></div>
+    <span class="lt w">👷 ${brigad.length} fő — ${totalH} óra</span>
+    ${brigad.map(w=>`<div style="font-size:12px;color:var(--t2);margin-top:4px">
+      <strong style="color:var(--txt)">${w.nev||"(névtelen)"}</strong> ${w.munkaorák}h
+      ${(w.aktivitasok||[]).map(a=>`<span class="lt" style="margin:1px">${a}</span>`).join("")}
+    </div>`).join("")}
+    ${allF.length?`<div style="margin-top:5px">${allF.map(a=>`<span class="lt m">${a.nev} ${a.mennyiseg} ${a.egyseg}</span>`).join("")}</div>`:""}
+    ${allI.length?`<div>${allI.map(a=>`<span class="lt r">⚡${a.nev} ${a.mennyiseg} ${a.egyseg}</span>`).join("")}</div>`:""}
+    ${n.megjegyzes?`<div style="margin-top:7px;font-size:13px;color:var(--t2);border-top:1px solid var(--brd);padding-top:7px">${n.megjegyzes}</div>`:""}
+    </div>`;
+  });
+  return h;
+}
+
+// ── Statisztika ────────────────────────────────────────────────────────────
+function renderStat(){
+  const naplo=S.naplo;
+  const osszesFo=naplo.reduce((s,n)=>s+(n.brigad||[]).length,0);
+  const osszesMO=naplo.reduce((s,n)=>s+(n.brigad||[]).reduce((ss,w)=>ss+Number(w.munkaorák||0),0),0);
+  const prjMap={};naplo.forEach(n=>{if(!prjMap[n.projekt])prjMap[n.projekt]={napok:0,orak:0};prjMap[n.projekt].napok++;prjMap[n.projekt].orak+=(n.brigad||[]).reduce((s,w)=>s+Number(w.munkaorák||0),0);});
+  const aktMap={};naplo.forEach(n=>(n.brigad||[]).forEach(w=>(w.aktivitasok||[]).forEach(a=>{aktMap[a]=(aktMap[a]||0)+1;})));
+  const topAkt=Object.entries(aktMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const anyMap={};naplo.forEach(n=>(n.brigad||[]).forEach(w=>(w.felhasznaltAnyagok||[]).forEach(a=>{if(!a.nev)return;if(!anyMap[a.nev])anyMap[a.nev]={};const e=a.egyseg||"db";anyMap[a.nev][e]=(anyMap[a.nev][e]||0)+Number(a.mennyiseg||0);})));
+  const igMap={};naplo.forEach(n=>(n.brigad||[]).forEach(w=>(w.igenyeltAnyagok||[]).forEach(a=>{if(!a.nev)return;if(!igMap[a.nev])igMap[a.nev]={};const e=a.egyseg||"db";igMap[a.nev][e]=(igMap[a.nev][e]||0)+Number(a.mennyiseg||0);})));
+  let h=`<div class="stit">Statisztikák</div>
+  <div class="stats">
+    <div class="stat"><div class="sv">${naplo.length}</div><div class="sl">Bejegyzés</div></div>
+    <div class="stat"><div class="sv">${osszesFo}</div><div class="sl">Össz. létszám</div></div>
+    <div class="stat"><div class="sv">${osszesMO}</div><div class="sl">Munkaóra</div></div>
+    <div class="stat"><div class="sv">${Object.keys(prjMap).length}</div><div class="sl">Projekt</div></div>
+  </div>`;
+  if(topAkt.length) h+=`<div class="card" style="margin-bottom:11px"><div class="ctit">🔧 Leggyakoribb munkák</div>${topAkt.map(([a,cnt])=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-size:13px;flex:1;margin-right:8px">${a}</span><div style="display:flex;align-items:center;gap:8px"><div style="width:55px;height:5px;background:var(--s2);border-radius:99px;overflow:hidden"><div style="width:${Math.min(100,(cnt/naplo.length)*100)}%;height:100%;background:var(--acc);border-radius:99px"></div></div><span class="badge">${cnt}</span></div></div>`).join("")}</div>`;
+  if(Object.keys(anyMap).length) h+=`<div class="card" style="margin-bottom:11px"><div class="ctit">📦 Felhasznált anyagok</div>${Object.entries(anyMap).map(([nev,eg])=>`<div class="rb"><div class="rbn">${nev}</div><div>${Object.entries(eg).map(([e,a])=>`<div class="rba">${Number(a).toFixed(1)} ${e}</div>`).join("")}</div></div>`).join("")}</div>`;
+  if(Object.keys(igMap).length) h+=`<div class="card" style="margin-bottom:11px"><div class="ctit">⚡ Anyagigények összesítve</div>${Object.entries(igMap).map(([nev,eg])=>`<div class="rb"><div class="rbn">${nev}</div><div>${Object.entries(eg).map(([e,a])=>`<div class="rba">${Number(a).toFixed(1)} ${e}</div>`).join("")}</div></div>`).join("")}</div>`;
+  if(Object.keys(prjMap).length) h+=`<div class="card"><div class="ctit">🏗️ Projektek</div>${Object.entries(prjMap).map(([p,d])=>`<div style="margin-bottom:9px;padding:8px 10px;background:var(--s2);border-radius:8px"><div style="font-weight:600;font-size:14px;margin-bottom:2px">${p}</div><div style="font-size:13px;color:var(--t2)">${d.napok} munkanap · ${d.orak} munkaóra</div></div>`).join("")}</div>`;
+  return h;
+}
+
+// ── Admin ──────────────────────────────────────────────────────────────────
+function renderAdmin(){
+  const sub=S.adminSubTab;
+  let h=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <div class="stit amb" style="margin-bottom:0">Admin</div>
+    <button class="btn btn-d" style="font-size:12px" onclick="S.isAdmin=false;S.tab='rogzit';render()">Kilépés</button>
+  </div>
+  <div class="fb" style="margin-bottom:14px">
+    <button class="fbb ${sub==="projektek"?"on":""}" onclick="S.adminSubTab='projektek';render()">🏗️ Projektek</button>
+    <button class="fbb ${sub==="naplo"?"on":""}" onclick="S.adminSubTab='naplo';render()">📋 Napló</button>
+    <button class="fbb ${sub==="export"?"on":""}" onclick="S.adminSubTab='export';render()">📤 Export</button>
+    <button class="fbb ${sub==="beallitas"?"on":""}" onclick="S.adminSubTab='beallitas';render()">⚙️ Beállítás</button>
+  </div>`;
+  if(sub==="projektek"){
+    h+=`<button class="btn btn-amb" style="margin-bottom:13px" onclick="S.ujPrjModal=true;render()">${icon("plus",18)} Új projekt létrehozása</button>`;
+    S.projektek.forEach(p=>{
+      const napok=S.naplo.filter(n=>n.projekt===p.nev).length;
+      const ora=S.naplo.filter(n=>n.projekt===p.nev).reduce((s,n)=>s+(n.brigad||[]).reduce((ss,w)=>ss+Number(w.munkaorák||0),0),0);
+      h+=`<div class="adm-card"><div style="display:flex;align-items:flex-start;justify-content:space-between">
+        <div style="flex:1"><div style="font-weight:700;font-size:15px">${p.nev}</div>
+          ${p.helyszin?`<div style="font-size:12px;color:var(--t2)">📍 ${p.helyszin}</div>`:""}
+          ${p.megrendelo?`<div style="font-size:12px;color:var(--t2)">👤 ${p.megrendelo}</div>`:""}
+          <div style="margin-top:5px;font-size:12px;color:var(--t3)">📋 ${napok} nap · ⏱ ${ora} óra</div>
+        </div>
+        <button class="btn btn-d" style="padding:6px 9px;flex-shrink:0" onclick="prjTorol('${p.id}','${p.nev.replace(/'/g,"\\'")}')">
+          ${icon("trash",14)}</button>
+      </div></div>`;
+    });
+    if(!S.projektek.length) h+=`<div class="empty"><p>Még nincs projekt</p></div>`;
+  } else if(sub==="naplo"){
+    h+=renderNaplo();
+  } else if(sub==="export"){
+    h+=`<div class="adm-card"><div class="ctit"><span style="color:var(--amber)">📤</span> Export</div>
+      <button class="btn btn-amb" style="margin-bottom:9px" onclick="exportCSV()">${icon("dl",17)} CSV exportálás (Excel)</button>
+      <button class="btn btn-s" onclick="exportJSON()">${icon("dl",17)} JSON exportálás</button>
+    </div>`;
+  } else if(sub==="beallitas"){
+    h+=`<div class="adm-card"><div class="ctit"><span style="color:var(--amber)">⚙️</span> Admin PIN módosítása</div>
+      <p style="font-size:13px;color:var(--t2);margin-bottom:13px">Aktuális PIN: <strong style="color:var(--acc)">${S.adminPin}</strong></p>
+      <div class="fld"><label class="lbl">Új PIN (min. 4 karakter)</label><input type="password" class="inp" id="ujPin" placeholder="Új PIN…"/></div>
+      <div class="fld"><label class="lbl">Megerősítés</label><input type="password" class="inp" id="ujPin2" placeholder="Ismételd meg…"/></div>
+      <button class="btn btn-amb" onclick="pinMentes()">PIN mentése</button>
+    </div>`;
+  }
+  return h;
+}
+
+// ── Modals ─────────────────────────────────────────────────────────────────
+function renderModals(){
+  let h="";
+  if(S.pinModal){
+    h+=`<div class="modal-bg" onclick="if(event.target===this){S.pinModal=false;render()}">
+      <div class="modal" style="text-align:center">
+        <div style="margin-bottom:11px;color:var(--amber)">${icon("lock",36,"var(--amber)")}</div>
+        <div class="modal-tit" style="text-align:center">Admin belépés</div>
+        <input type="password" class="inp" id="pinInp" maxlength="8" placeholder="••••"
+          style="text-align:center;font-size:22px;letter-spacing:8px;margin-bottom:11px"
+          onkeydown="if(event.key==='Enter')pinCheck()"/>
+        <div id="pinErr" style="color:var(--red);font-size:13px;margin-bottom:8px;min-height:18px"></div>
+        <div class="r2">
+          <button class="btn btn-s" onclick="S.pinModal=false;render()">Mégse</button>
+          <button class="btn btn-amb" onclick="pinCheck()">Belépés</button>
+        </div>
+      </div>
+    </div>`;
+    setTimeout(()=>{const el=document.getElementById("pinInp");if(el)el.focus();},50);
+  }
+  if(S.ujPrjModal){
+    h+=`<div class="modal-bg" onclick="if(event.target===this){S.ujPrjModal=false;render()}">
+      <div class="modal">
+        <div class="modal-tit">🏗️ Új projekt</div>
+        <div class="fld"><label class="lbl">Projekt neve *</label><input class="inp" id="prjNev" placeholder="pl. Veszprém – Alapozás 2026"/></div>
+        <div class="fld"><label class="lbl">Helyszín / Cím</label><input class="inp" id="prjHely" placeholder="pl. 8200 Veszprém, Fő út 12."/></div>
+        <div class="fld"><label class="lbl">Megrendelő</label><input class="inp" id="prjMegr" placeholder="pl. Iron Building 78 Kft."/></div>
+        <div class="fld"><label class="lbl">Kezdési dátum</label><input type="date" class="inp" id="prjKezdes" value="${today()}"/></div>
+        <div class="r2">
+          <button class="btn btn-s" onclick="S.ujPrjModal=false;render()">Mégse</button>
+          <button class="btn btn-p" onclick="ujProjektMent()">Létrehozás</button>
+        </div>
+      </div>
+    </div>`;
+    setTimeout(()=>{const el=document.getElementById("prjNev");if(el)el.focus();},50);
+  }
+  return h;
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function render(){
+  const app=document.getElementById("app");if(!app)return;
+  const tabs=[{id:"rogzit",lbl:"Rögzít",ic:"plus"},{id:"naplo",lbl:"Napló",ic:"list"},{id:"stat",lbl:"Statisztika",ic:"chart"},{id:"admin",lbl:"Admin",ic:"shield",adm:true}];
+  let content="";
+  if(S.tab==="rogzit")content=renderWizard();
+  else if(S.tab==="naplo")content=renderNaplo();
+  else if(S.tab==="stat")content=renderStat();
+  else if(S.tab==="admin")content=renderAdmin();
+  app.innerHTML=`
+    <div class="hdr">${LOGO}
+      <div class="hdr-r">
+        ${S.isAdmin&&S.tab==="admin"?`<span style="display:flex;align-items:center;gap:4px;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.35);color:var(--amber);padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700">${icon("shield",12,"var(--amber)")} ADMIN</span>`:""}
+        <div class="hdr-date">${new Date().toLocaleDateString("hu-HU",{month:"short",day:"numeric"})}</div>
+        <div class="dot${S.online?"":" off"}"></div>
+      </div>
+    </div>
+    <div class="cnt">${content}</div>
+    <div class="nav">${tabs.map(t=>`<button class="nb ${t.adm?"adm":""} ${S.tab===t.id?"on":""}" onclick="setTab('${t.id}')">${icon(t.ic,20)}<span>${t.lbl}</span></button>`).join("")}</div>
+    ${S.toastMsg?`<div class="toast">${S.toastMsg}</div>`:""}
+    ${renderModals()}`;
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+window.setTab=(t)=>{if(t==="admin"&&!S.isAdmin){S.pinModal=true;render();return;}S.tab=t;render();};
+window.wNext=()=>{saveWInputs();S.wStep=Math.min(3,S.wStep+1);render();};
+window.wPrev=()=>{saveWInputs();S.wStep=Math.max(1,S.wStep-1);render();};
+
+function saveWInputs(){
+  if(!S.wForm)return;
+  const d=document.getElementById("wD"),p=document.getElementById("wP"),m=document.getElementById("wM");
+  if(d)S.wForm.datum=d.value;if(p)S.wForm.projekt=p.value;if(m)S.wForm.megjegyzes=m.value;
+}
+
+window.wAddW=()=>{S.wForm.brigad.push(freshWorker());S.wOpenW=S.wForm.brigad.length-1;render();};
+window.wRemW=(i)=>{S.wForm.brigad.splice(i,1);if(S.wOpenW>=S.wForm.brigad.length)S.wOpenW=S.wForm.brigad.length-1;render();};
+window.wToggleAkt=(wi,a)=>{const sel=S.wForm.brigad[wi].aktivitasok;const idx=sel.indexOf(a);idx>=0?sel.splice(idx,1):sel.push(a);render();};
+window.wAddA=(wi,t)=>{const k=t==="f"?"felhasznaltAnyagok":"igenyeltAnyagok";S.wForm.brigad[wi][k].push({id:uid(),nev:"",mennyiseg:"",egyseg:"m²"});render();};
+window.wRemA=(wi,t,i)=>{const k=t==="f"?"felhasznaltAnyagok":"igenyeltAnyagok";S.wForm.brigad[wi][k].splice(i,1);render();};
+window.wUpdA=(wi,t,i,k,v)=>{const key=t==="f"?"felhasznaltAnyagok":"igenyeltAnyagok";S.wForm.brigad[wi][key][i][k]=v;};
+
+window.wMentes=async()=>{
+  saveWInputs();const f=S.wForm;
+  if(!f.projekt){toast("⚠️ Válassz projektet!");return;}
+  try{
+    await window.FB.naploMent(f);
+    S.wForm=freshForm();S.wStep=1;S.wSearch={};S.wOpenKat={};S.wOpenW=-1;
+    toast("✓ Bejegyzés mentve!");S.tab="naplo";render();
+  }catch(e){toast("❌ Hiba: "+e.message);}
+};
+
+window.naploTorol=async(id)=>{if(!confirm("Törlöd?"))return;try{await window.FB.naploTorol(id);toast("Törölve.");}catch(e){toast("❌ Hiba!");}};
+
+window.ujProjektMent=async()=>{
+  const nev=document.getElementById("prjNev")?.value.trim();
+  if(!nev){alert("Add meg a projekt nevét!");return;}
+  try{
+    await window.FB.projektMent({nev,helyszin:document.getElementById("prjHely")?.value||"",megrendelo:document.getElementById("prjMegr")?.value||"",kezdes:document.getElementById("prjKezdes")?.value||today()});
+    S.ujPrjModal=false;toast("✓ Projekt létrehozva!");
+    if(S.wForm)S.wForm.projekt=nev;render();
+  }catch(e){toast("❌ Hiba: "+e.message);}
+};
+
+window.prjTorol=async(id,nev)=>{if(!confirm(`Töröljük: "${nev}"?`))return;try{await window.FB.projektTorol(id);toast("Projekt törölve.");}catch(e){toast("❌ Hiba!");}};
+
+window.pinCheck=()=>{
+  const inp=document.getElementById("pinInp");if(!inp)return;
+  if(inp.value===S.adminPin){S.isAdmin=true;S.pinModal=false;S.tab="admin";render();}
+  else{const err=document.getElementById("pinErr");if(err)err.textContent="Helytelen PIN!";inp.value="";setTimeout(()=>{if(err)err.textContent="";},1500);}
+};
+
+window.pinMentes=async()=>{
+  const p1=document.getElementById("ujPin")?.value,p2=document.getElementById("ujPin2")?.value;
+  if(!p1||p1.length<4){toast("⚠️ Min. 4 karakter!");return;}
+  if(p1!==p2){toast("⚠️ A két PIN nem egyezik!");return;}
+  try{await window.FB.beallitasokMent({pin:p1});S.adminPin=p1;toast("✓ PIN módosítva!");}catch(e){toast("❌ Hiba!");}
+};
+
+window.exportCSV=()=>{
+  const lines=["Dátum;Projekt;Munkás;Munkaóra;Tevékenységek;Felhasznált anyagok;Igényelt anyagok;Megjegyzés"];
+  S.naplo.forEach(n=>(n.brigad||[]).forEach(w=>{
+    lines.push([n.datum,n.projekt,w.nev||"",w.munkaorák,(w.aktivitasok||[]).join(", "),(w.felhasznaltAnyagok||[]).map(a=>`${a.nev} ${a.mennyiseg}${a.egyseg}`).join(", "),(w.igenyeltAnyagok||[]).map(a=>`${a.nev} ${a.mennyiseg}${a.egyseg}`).join(", "),n.megjegyzes||""].join(";"));
+  }));
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\uFEFF"+lines.join("\n")],{type:"text/csv;charset=utf-8"}));a.download=`coolvarko-naplo-${today()}.csv`;a.click();
+};
+window.exportJSON=()=>{
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify({naplo:S.naplo,projektek:S.projektek},null,2)],{type:"application/json"}));a.download=`coolvarko-naplo-${today()}.json`;a.click();
+};
+
+document.addEventListener("firebase-ready",async()=>{
+  if(!S.wForm)S.wForm=freshForm();
+  try{const b=await window.FB.beallitasokLeker();S.adminPin=b.pin||"1234";}catch(e){}
+  window.FB.naploFigyel((data)=>{S.naplo=data;render();});
+  window.FB.projektekFigyel((data)=>{S.projektek=data;if(S.wForm&&!S.wForm.projekt&&data.length)S.wForm.projekt=data[0].nev;render();});
+  render();
+});
+window.addEventListener("online",()=>{S.online=true;render();});
+window.addEventListener("offline",()=>{S.online=false;render();});
+if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>     storageBucket: "coolvarko-kft.firebasestorage.app",
       messagingSenderId: "334119129410",
       appId: "1:334119129410:web:430a7b2ec7f0f72ec4f8db"
     };
