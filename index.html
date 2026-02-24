@@ -143,7 +143,7 @@ const AKTIVITASOK = {
 const EGYSEGEK=["m²","m³","fm","db","kg","t","zsák","l","óra"];
 const ANYAGOK=["Beton C16/20","Beton C20/25","Beton C25/30","Tégla (normál)","Tégla (porotherm)","Blokktégla","Zsalukő 15","Zsalukő 20","Zsalukő 30","Zsalukő 40","Cement","Mész","Gipsz","Vakolat gépi","Vakolat kézi","Betonacél Ø8","Betonacél Ø10","Betonacél Ø12","Betonacél Ø16","Hegesztett háló","Zsalu deszka","Zsalu tábla","Állvány elem","Vízszigetelő fólia","Bitumen lemez","Delta-MS drénlemez","XPS szigetelés","EPS szigetelés","Ásványgyapot","Gipszkarton lap","GK profil","Csempe","Járólap","Parketta","Laminált padló","Fugázó","Szilikon","Homok","Kavics","Zúzott kő"];
 
-const S={tab:"rogzit",isAdmin:false,adminSubTab:"projektek",naplo:[],projektek:[],naploFilter:"Mind",wStep:1,wForm:null,wSearch:{},wOpenKat:{},wOpenW:-1,ujPrjModal:false,pinModal:false,szerkesztModal:false,szerkesztId:null,online:navigator.onLine,toastMsg:null,adminPin:"1234"};
+const S={tab:"rogzit",isAdmin:false,adminSubTab:"projektek",naplo:[],projektek:[],naploFilter:"Mind",wStep:1,wForm:null,wSearch:{},wOpenKat:{},wOpenW:-1,ujPrjModal:false,pinModal:false,szerkesztModal:false,szerkesztId:null,munkasStatFilter:"havi",online:navigator.onLine,toastMsg:null,adminPin:"1234"};
 
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const today=()=>new Date().toISOString().split("T")[0];
@@ -305,25 +305,81 @@ function renderNaplo(){
 }
 
 // ── Statisztika ────────────────────────────────────────────────────────────
+// Hét sorszáma
+function getWeekNum(d){const dt=new Date(d);const jan1=new Date(dt.getFullYear(),0,1);return Math.ceil((((dt-jan1)/86400000)+jan1.getDay()+1)/7);}
+function getMonthName(d){return new Date(d).toLocaleDateString("hu-HU",{year:"numeric",month:"long"});}
+function getWeekLabel(d){const dt=new Date(d);const mon=new Date(dt);mon.setDate(dt.getDate()-((dt.getDay()+6)%7));const sun=new Date(mon);sun.setDate(mon.getDate()+6);return mon.toLocaleDateString("hu-HU",{month:"short",day:"numeric"})+" – "+sun.toLocaleDateString("hu-HU",{month:"short",day:"numeric"});}
+
 function renderStat(){
   const naplo=S.naplo;
-  const osszesFo=naplo.reduce((s,n)=>s+(n.brigad||[]).length,0);
   const osszesMO=naplo.reduce((s,n)=>s+(n.brigad||[]).reduce((ss,w)=>ss+Number(w.munkaorák||0),0),0);
+  
+  // Egyedi munkások (trim névvel)
+  const munkasMap={};
+  naplo.forEach(n=>{
+    (n.brigad||[]).forEach(w=>{
+      const nev=(w.nev||"").trim();
+      if(!nev)return;
+      if(!munkasMap[nev])munkasMap[nev]={osszes:0,napok:0,hetek:{},honapok:{},aktivitasok:{}};
+      const ora=Number(w.munkaorák||0);
+      munkasMap[nev].osszes+=ora;
+      munkasMap[nev].napok++;
+      // Heti bontás
+      const hetLabel=getWeekLabel(n.datum);
+      munkasMap[nev].hetek[hetLabel]=(munkasMap[nev].hetek[hetLabel]||0)+ora;
+      // Havi bontás
+      const honLabel=getMonthName(n.datum);
+      munkasMap[nev].honapok[honLabel]=(munkasMap[nev].honapok[honLabel]||0)+ora;
+      (w.aktivitasok||[]).forEach(a=>{munkasMap[nev].aktivitasok[a]=(munkasMap[nev].aktivitasok[a]||0)+1;});
+    });
+  });
+
   const prjMap={};naplo.forEach(n=>{if(!prjMap[n.projekt])prjMap[n.projekt]={napok:0,orak:0};prjMap[n.projekt].napok++;prjMap[n.projekt].orak+=(n.brigad||[]).reduce((s,w)=>s+Number(w.munkaorák||0),0);});
   const aktMap={};naplo.forEach(n=>(n.brigad||[]).forEach(w=>(w.aktivitasok||[]).forEach(a=>{aktMap[a]=(aktMap[a]||0)+1;})));
   const topAkt=Object.entries(aktMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const anyMap={};naplo.forEach(n=>(n.brigad||[]).forEach(w=>(w.felhasznaltAnyagok||[]).forEach(a=>{if(!a.nev)return;if(!anyMap[a.nev])anyMap[a.nev]={};const e=a.egyseg||"db";anyMap[a.nev][e]=(anyMap[a.nev][e]||0)+Number(a.mennyiseg||0);})));
   const igMap={};naplo.forEach(n=>(n.brigad||[]).forEach(w=>(w.igenyeltAnyagok||[]).forEach(a=>{if(!a.nev)return;if(!igMap[a.nev])igMap[a.nev]={};const e=a.egyseg||"db";igMap[a.nev][e]=(igMap[a.nev][e]||0)+Number(a.mennyiseg||0);})));
+  const egyediMunkasok=Object.keys(munkasMap).length;
   let h=`<div class="stit">Statisztikák</div>
   <div class="stats">
     <div class="stat"><div class="sv">${naplo.length}</div><div class="sl">Bejegyzés</div></div>
-    <div class="stat"><div class="sv">${osszesFo}</div><div class="sl">Össz. létszám</div></div>
+    <div class="stat"><div class="sv">${egyediMunkasok}</div><div class="sl">Munkás</div></div>
     <div class="stat"><div class="sv">${osszesMO}</div><div class="sl">Munkaóra</div></div>
     <div class="stat"><div class="sv">${Object.keys(prjMap).length}</div><div class="sl">Projekt</div></div>
   </div>`;
   if(topAkt.length) h+=`<div class="card" style="margin-bottom:11px"><div class="ctit">🔧 Leggyakoribb munkák</div>${topAkt.map(([a,cnt])=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-size:13px;flex:1;margin-right:8px">${a}</span><div style="display:flex;align-items:center;gap:8px"><div style="width:55px;height:5px;background:var(--s2);border-radius:99px;overflow:hidden"><div style="width:${Math.min(100,(cnt/naplo.length)*100)}%;height:100%;background:var(--acc);border-radius:99px"></div></div><span class="badge">${cnt}</span></div></div>`).join("")}</div>`;
   if(Object.keys(anyMap).length) h+=`<div class="card" style="margin-bottom:11px"><div class="ctit">📦 Felhasznált anyagok</div>${Object.entries(anyMap).map(([nev,eg])=>`<div class="rb"><div class="rbn">${nev}</div><div>${Object.entries(eg).map(([e,a])=>`<div class="rba">${Number(a).toFixed(1)} ${e}</div>`).join("")}</div></div>`).join("")}</div>`;
   if(Object.keys(igMap).length) h+=`<div class="card" style="margin-bottom:11px"><div class="ctit">⚡ Anyagigények összesítve</div>${Object.entries(igMap).map(([nev,eg])=>`<div class="rb"><div class="rbn">${nev}</div><div>${Object.entries(eg).map(([e,a])=>`<div class="rba">${Number(a).toFixed(1)} ${e}</div>`).join("")}</div></div>`).join("")}</div>`;
+  // Munkás teljesítmény kártya
+  if(Object.keys(munkasMap).length){
+    const statFilter=S.munkasStatFilter||"havi";
+    h+=`<div class="card" style="margin-bottom:11px">
+      <div class="ctit">👷 Munkás teljesítmény</div>
+      <div class="fb" style="margin-bottom:11px">
+        <button class="fbb ${statFilter==="osszes"?"on":""}" onclick="S.munkasStatFilter='osszes';render()">Összesített</button>
+        <button class="fbb ${statFilter==="heti"?"on":""}" onclick="S.munkasStatFilter='heti';render()">Heti</button>
+        <button class="fbb ${statFilter==="havi"?"on":""}" onclick="S.munkasStatFilter='havi';render()">Havi</button>
+      </div>
+      ${Object.entries(munkasMap).sort((a,b)=>b[1].osszes-a[1].osszes).map(([nev,d])=>{
+        let reszlet="";
+        if(statFilter==="heti"){
+          reszlet=Object.entries(d.hetek).map(([h,o])=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--t2);padding:3px 0;border-bottom:1px solid var(--brd)"><span>${h}</span><span style="color:var(--acc);font-weight:700">${o} óra</span></div>`).join("");
+        } else if(statFilter==="havi"){
+          reszlet=Object.entries(d.honapok).map(([h,o])=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--t2);padding:3px 0;border-bottom:1px solid var(--brd)"><span>${h}</span><span style="color:var(--acc);font-weight:700">${o} óra</span></div>`).join("");
+        }
+        const topAkt=Object.entries(d.aktivitasok).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([a])=>a).join(", ");
+        return `<div style="background:var(--s2);border-radius:8px;padding:11px;margin-bottom:8px;border:1px solid var(--brd)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+            <span style="font-weight:700;font-size:15px">${nev}</span>
+            <span style="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:18px;color:var(--acc)">${d.osszes} óra</span>
+          </div>
+          <div style="font-size:12px;color:var(--t2);margin-bottom:${reszlet?"7px":"0"}">${d.napok} munkanap${topAkt?" · "+topAkt:""}</div>
+          ${reszlet?`<div style="margin-top:5px">${reszlet}</div>`:""}
+        </div>`;
+      }).join("")}
+    </div>`;
+  }
+
   if(Object.keys(prjMap).length) h+=`<div class="card"><div class="ctit">🏗️ Projektek</div>${Object.entries(prjMap).map(([p,d])=>`<div style="margin-bottom:9px;padding:8px 10px;background:var(--s2);border-radius:8px"><div style="font-weight:600;font-size:14px;margin-bottom:2px">${p}</div><div style="font-size:13px;color:var(--t2)">${d.napok} munkanap · ${d.orak} munkaóra</div></div>`).join("")}</div>`;
   if(naplo.length>0){
     h+=`<div class="card" style="border-color:rgba(126,200,0,.4);margin-top:11px">
@@ -522,7 +578,7 @@ window.wMentes=async()=>{
       projekt:f.projekt,
       megjegyzes:f.megjegyzes||"",
       brigad:f.brigad.map(w=>({
-        nev:w.nev,
+        nev:(w.nev||'').trim(),
         munkaorák:Number(w.munkaorák)||8,
         aktivitasok:w.aktivitasok||[],
         felhasznaltAnyagok:w.felhasznaltAnyagok||[],
@@ -616,15 +672,16 @@ function genAI(naplo){
     if(!prjMap[n.projekt]) prjMap[n.projekt]={napok:0,orak:0,munkasok:new Set()};
     prjMap[n.projekt].napok++;
     (n.brigad||[]).forEach(w=>{
+      const nev=(w.nev||"").trim();
       const ora=Number(w.munkaorák||0);
       prjMap[n.projekt].orak+=ora;
-      if(w.nev) prjMap[n.projekt].munkasok.add(w.nev);
-      if(w.nev){
-        if(!munkasMap[w.nev]) munkasMap[w.nev]={orak:0,napok:0,aktivitasok:{}};
-        munkasMap[w.nev].orak+=ora;
-        munkasMap[w.nev].napok++;
+      if(nev) prjMap[n.projekt].munkasok.add(nev);
+      if(nev){
+        if(!munkasMap[nev]) munkasMap[nev]={orak:0,napok:0,aktivitasok:{}};
+        munkasMap[nev].orak+=ora;
+        munkasMap[nev].napok++;
         (w.aktivitasok||[]).forEach(a=>{
-          munkasMap[w.nev].aktivitasok[a]=(munkasMap[w.nev].aktivitasok[a]||0)+1;
+          munkasMap[nev].aktivitasok[a]=(munkasMap[nev].aktivitasok[a]||0)+1;
           aktMap[a]=(aktMap[a]||0)+1;
         });
       }
@@ -642,7 +699,7 @@ function genAI(naplo){
   txt += "\n--- MUNKÁSOK TELJESÍTMÉNYE ---\n";
   Object.entries(munkasMap).sort((a,b)=>b[1].orak-a[1].orak).forEach(([nev,d])=>{
     const topAkt=Object.entries(d.aktivitasok).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([a])=>a).join(", ");
-    txt += `• ${nev}: ${d.orak} munkaóra (${d.napok} nap)\n`;
+    txt += `• ${nev.trim()}: ${d.orak} munkaóra (${d.napok} nap)\n`;
     if(topAkt) txt += `  Fő tevékenységek: ${topAkt}\n`;
   });
   const topAkt=Object.entries(aktMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
