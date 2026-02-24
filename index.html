@@ -538,6 +538,50 @@ window.wMentes=async()=>{
 
 window.naploTorol=async(id)=>{if(!confirm("Törlöd?"))return;try{await window.FB.naploTorol(id);toast("Törölve.");}catch(e){toast("❌ Hiba!");}};
 
+window.naploSzerkeszt=(id)=>{
+  S.szerkesztId=id;
+  S.szerkesztModal=true;
+  render();
+};
+
+window.szAddAnyag=(wi,t)=>{
+  const n=S.naplo.find(x=>x.id===S.szerkesztId);
+  if(!n||!n.brigad[wi])return;
+  const key=t==='f'?'felhasznaltAnyagok':'igenyeltAnyagok';
+  if(!n.brigad[wi][key])n.brigad[wi][key]=[];
+  n.brigad[wi][key].push({nev:'',mennyiseg:'',egyseg:'m²'});
+  render();
+};
+
+window.szMentes=async()=>{
+  const n=S.naplo.find(x=>x.id===S.szerkesztId);
+  if(!n)return;
+  const datum=document.getElementById('szD')?.value||n.datum;
+  const megjegyzes=document.getElementById('szMegjegyzes')?.value||'';
+  const brigad=(n.brigad||[]).map((w,wi)=>{
+    const nev=document.getElementById('szW'+wi+'nev')?.value||w.nev||'';
+    const munkaorák=Number(document.getElementById('szW'+wi+'ora')?.value)||w.munkaorák||8;
+    const felhasznaltAnyagok=(w.felhasznaltAnyagok||[]).map((a,ai)=>({
+      nev:document.getElementById('szFA'+wi+'_'+ai+'nev')?.value||a.nev||'',
+      mennyiseg:document.getElementById('szFA'+wi+'_'+ai+'mn')?.value||a.mennyiseg||'',
+      egyseg:document.getElementById('szFA'+wi+'_'+ai+'eg')?.value||a.egyseg||'m²',
+    })).filter(a=>a.nev);
+    const igenyeltAnyagok=(w.igenyeltAnyagok||[]).map((a,ai)=>({
+      nev:document.getElementById('szIA'+wi+'_'+ai+'nev')?.value||a.nev||'',
+      mennyiseg:document.getElementById('szIA'+wi+'_'+ai+'mn')?.value||a.mennyiseg||'',
+      egyseg:document.getElementById('szIA'+wi+'_'+ai+'eg')?.value||a.egyseg||'m²',
+    })).filter(a=>a.nev);
+    return {...w,nev,munkaorák,felhasznaltAnyagok,igenyeltAnyagok};
+  });
+  try{
+    await window.FB.naploFrissit(S.szerkesztId,{datum,megjegyzes,brigad,projekt:n.projekt});
+    S.szerkesztModal=false;
+    S.szerkesztId=null;
+    toast('✓ Bejegyzés frissítve!');
+    render();
+  }catch(e){toast('❌ Hiba: '+e.message);console.error(e);}
+};
+
 window.ujProjektMent=async()=>{
   const nev=document.getElementById("prjNev")?.value.trim();
   if(!nev){alert("Add meg a projekt nevét!");return;}
