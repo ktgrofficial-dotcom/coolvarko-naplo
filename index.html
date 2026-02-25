@@ -152,7 +152,7 @@ const S={tab:"rogzit",isAdmin:false,adminSubTab:"projektek",naplo:[],projektek:[
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const today=()=>new Date().toISOString().split("T")[0];
 const fmt=(d)=>new Date(d).toLocaleDateString("hu-HU");
-const freshWorker=()=>({id:uid(),nev:"",munkaorák:8,aktivitasok:[],felhasznaltAnyagok:[],igenyeltAnyagok:[]});
+const freshWorker=()=>({id:uid(),nev:"",munkaorák:8,aktivitasok:[],aktivitasokMennyiseg:{},felhasznaltAnyagok:[],igenyeltAnyagok:[]});
 const freshForm=()=>({datum:today(),projekt:S.projektek[0]?.nev||"",brigad:[freshWorker()],megjegyzes:""});
 function toast(msg){S.toastMsg=msg;render();setTimeout(()=>{S.toastMsg=null;render();},2400);}
 
@@ -167,7 +167,25 @@ function aktPicker(wi){
   let h=`<div class="srch-w"><span class="srch-ic">${icon("search",15)}</span>
     <input class="inp" placeholder="Keresés a tevékenységek között…" value="${(S.wSearch[wi]||"").replace(/"/g,"&quot;")}"
       oninput="S.wSearch[${wi}]=this.value;render()" style="padding-left:33px"/></div>`;
-  if(sel.length) h+=`<div style="padding:6px 10px;background:rgba(126,200,0,.1);border:1px solid rgba(126,200,0,.3);border-radius:8px;font-size:12px;margin-bottom:8px"><span style="color:var(--acc);font-weight:700">${sel.length} kiválasztva:</span> <span style="color:var(--t2);font-size:11px">${sel.slice(0,3).join(", ")}${sel.length>3?"…":""}</span></div>`;
+  if(sel.length){
+    const mnMap = w.aktivitasokMennyiseg||{};
+    h+=`<div style="background:rgba(126,200,0,.08);border:1px solid rgba(126,200,0,.25);border-radius:8px;padding:8px 10px;margin-bottom:8px">
+      <div style="font-size:11px;font-weight:700;color:var(--acc);margin-bottom:7px">${sel.length} kiválasztott tevékenység — adj meg mennyiséget (opcionális):</div>
+      ${sel.map(a=>{
+        const mn=mnMap[a]?.mn||""; const eg=mnMap[a]?.eg||"m²";
+        return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+          <span style="flex:1;font-size:12px;color:var(--t2)">${a}</span>
+          <input type="number" min="0" step="0.5" placeholder="—" value="${mn}"
+            style="width:60px;background:var(--s2);border:1px solid var(--brd);border-radius:6px;padding:4px 6px;font-size:12px;color:var(--txt);text-align:right"
+            oninput="wAktMn(${wi},'${a.replace(/'/g,"\\'")}','mn',this.value)"/>
+          <select style="background:var(--s2);border:1px solid var(--brd);border-radius:6px;padding:4px 5px;font-size:12px;color:var(--txt)"
+            onchange="wAktMn(${wi},'${a.replace(/'/g,"\\'")}','eg',this.value)">
+            ${["m²","m³","fm","db","t","kg","m"].map(e=>`<option${eg===e?" selected":""}>${e}</option>`).join("")}
+          </select>
+        </div>`;
+      }).join("")}
+    </div>`;
+  }
   for(const [kat,items] of Object.entries(filt)){
     const isOpen=srch||ok[kat], cnt=items.filter(a=>sel.includes(a)).length;
     h+=`<div class="kath" onclick="S.wOpenKat[${wi}]=S.wOpenKat[${wi}]||{};S.wOpenKat[${wi}]['${kat.replace(/'/g,"\\'")}']=!S.wOpenKat[${wi}]['${kat.replace(/'/g,"\\'")}'];render()">
@@ -274,7 +292,7 @@ function renderWizard(){
       </div>
       ${f.brigad.map(w=>`<div style="padding:10px;background:var(--s2);border-radius:8px;margin-bottom:7px;border:1px solid var(--brd)">
         <div style="font-weight:700;font-size:14px;margin-bottom:5px">${w.nev||"(névtelen)"} — ${w.munkaorák} óra</div>
-        ${(w.aktivitasok||[]).length?`<div style="margin-bottom:4px">${w.aktivitasok.map(a=>`<span class="lt">${a}</span>`).join("")}</div>`:""}
+        ${(w.aktivitasok||[]).length?`<div style="margin-bottom:4px">${w.aktivitasok.map(a=>{const mn=(w.aktivitasokMennyiseg||{})[a];return `<span class="lt">${a}${mn&&mn.mn?" "+mn.mn+" "+(mn.eg||"m²"):""}</span>`;}).join("")}</div>`:""}
         ${(w.felhasznaltAnyagok||[]).length?`<div>${w.felhasznaltAnyagok.map(a=>`<span class="lt m">${a.nev} ${a.mennyiseg} ${a.egyseg}</span>`).join("")}</div>`:""}
         ${(w.igenyeltAnyagok||[]).length?`<div>${w.igenyeltAnyagok.map(a=>`<span class="lt r">⚡${a.nev} ${a.mennyiseg} ${a.egyseg}</span>`).join("")}</div>`:""}
       </div>`).join("")}
@@ -746,7 +764,18 @@ window.wNevValaszt=(wi,nev)=>{
 
 window.wAddW=()=>{S.wForm.brigad.push(freshWorker());S.wOpenW=S.wForm.brigad.length-1;render();};
 window.wRemW=(i)=>{S.wForm.brigad.splice(i,1);if(S.wOpenW>=S.wForm.brigad.length)S.wOpenW=S.wForm.brigad.length-1;render();};
-window.wToggleAkt=(wi,a)=>{const sel=S.wForm.brigad[wi].aktivitasok;const idx=sel.indexOf(a);idx>=0?sel.splice(idx,1):sel.push(a);render();};
+window.wToggleAkt=(wi,a)=>{
+  const sel=S.wForm.brigad[wi].aktivitasok;
+  const idx=sel.indexOf(a);
+  idx>=0?sel.splice(idx,1):sel.push(a);
+  render();
+};
+window.wAktMn=(wi,a,field,val)=>{
+  const w=S.wForm.brigad[wi];
+  if(!w.aktivitasokMennyiseg) w.aktivitasokMennyiseg={};
+  if(!w.aktivitasokMennyiseg[a]) w.aktivitasokMennyiseg[a]={mn:"",eg:"m²"};
+  w.aktivitasokMennyiseg[a][field]=field==="mn"?Number(val)||"":val;
+};
 window.wAddA=(wi,t)=>{const k=t==="f"?"felhasznaltAnyagok":"igenyeltAnyagok";S.wForm.brigad[wi][k].push({id:uid(),nev:"",mennyiseg:"",egyseg:"m²"});render();};
 window.wRemA=(wi,t,i)=>{const k=t==="f"?"felhasznaltAnyagok":"igenyeltAnyagok";S.wForm.brigad[wi][k].splice(i,1);render();};
 window.wUpdA=(wi,t,i,k,v)=>{const key=t==="f"?"felhasznaltAnyagok":"igenyeltAnyagok";S.wForm.brigad[wi][key][i][k]=v;};
@@ -767,6 +796,7 @@ window.wMentes=async()=>{
         nev:(w.nev||'').trim(),
         munkaorák:Number(w.munkaorák)||8,
         aktivitasok:w.aktivitasok||[],
+        aktivitasokMennyiseg:w.aktivitasokMennyiseg||{},
         felhasznaltAnyagok:w.felhasznaltAnyagok||[],
         igenyeltAnyagok:w.igenyeltAnyagok||[],
       })),
@@ -947,6 +977,63 @@ function genAI(naplo){
     txt += "\n--- LEGGYAKORIBB MUNKÁK ---\n";
     topAkt.forEach(([a,cnt])=>{ txt += `• ${a}: ${cnt}x\n`; });
   }
+
+  // Tevékenységek mennyiségei összesítve
+  const aktMnMap={};
+  naplo.forEach(n=>(n.brigad||[]).forEach(w=>{
+    const mnMap=w.aktivitasokMennyiseg||{};
+    Object.entries(mnMap).forEach(([a,v])=>{
+      if(!v.mn) return;
+      if(!aktMnMap[a]) aktMnMap[a]={};
+      const eg=v.eg||"m²";
+      aktMnMap[a][eg]=(aktMnMap[a][eg]||0)+Number(v.mn||0);
+    });
+  }));
+  if(Object.keys(aktMnMap).length){
+    txt += "\n--- ELVÉGZETT MUNKÁK MENNYISÉGE ---\n";
+    Object.entries(aktMnMap).forEach(([a,egek])=>{
+      Object.entries(egek).forEach(([e,mn])=>{
+        txt += `• ${a}: ${mn} ${e}\n`;
+      });
+    });
+  }
+
+  // Felhasznált anyagok összesítve
+  const anyagMap={};
+  naplo.forEach(n=>(n.brigad||[]).forEach(w=>(w.felhasznaltAnyagok||[]).forEach(a=>{
+    if(!a.nev) return;
+    const key=a.nev.trim();
+    const egyseg=a.egyseg||"db";
+    if(!anyagMap[key]) anyagMap[key]={};
+    anyagMap[key][egyseg]=(anyagMap[key][egyseg]||0)+Number(a.mennyiseg||0);
+  })));
+  if(Object.keys(anyagMap).length){
+    txt += "\n--- FELHASZNÁLT ANYAGOK ---\n";
+    Object.entries(anyagMap).forEach(([nev,egek])=>{
+      Object.entries(egek).forEach(([e,mn])=>{
+        txt += `• ${nev}: ${mn} ${e}\n`;
+      });
+    });
+  }
+
+  // Igényelt anyagok összesítve
+  const igenyMap={};
+  naplo.forEach(n=>(n.brigad||[]).forEach(w=>(w.igenyeltAnyagok||[]).forEach(a=>{
+    if(!a.nev) return;
+    const key=a.nev.trim();
+    const egyseg=a.egyseg||"db";
+    if(!igenyMap[key]) igenyMap[key]={};
+    igenyMap[key][egyseg]=(igenyMap[key][egyseg]||0)+Number(a.mennyiseg||0);
+  })));
+  if(Object.keys(igenyMap).length){
+    txt += "\n--- IGÉNYELT ANYAGOK ---\n";
+    Object.entries(igenyMap).forEach(([nev,egek])=>{
+      Object.entries(egek).forEach(([e,mn])=>{
+        txt += `• ${nev}: ${mn} ${e}\n`;
+      });
+    });
+  }
+
   txt += "\n=== FELHASZNÁLÁS: Kérd Claude-tól hogy készítsen ajánlatot ===";
   return txt;
 }
