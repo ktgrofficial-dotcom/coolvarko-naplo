@@ -147,7 +147,7 @@ const AKTIVITASOK = {
 const EGYSEGEK=["m²","m³","fm","db","kg","t","zsák","l","óra"];
 const ANYAGOK=["Beton C16/20","Beton C20/25","Beton C25/30","Tégla (normál)","Tégla (porotherm)","Blokktégla","Zsalukő 15","Zsalukő 20","Zsalukő 30","Zsalukő 40","Cement","Mész","Gipsz","Vakolat gépi","Vakolat kézi","Betonacél Ø8","Betonacél Ø10","Betonacél Ø12","Betonacél Ø16","Hegesztett háló","Zsalu deszka","Zsalu tábla","Állvány elem","Vízszigetelő fólia","Bitumen lemez","Delta-MS drénlemez","XPS szigetelés","EPS szigetelés","Ásványgyapot","Gipszkarton lap","GK profil","Csempe","Járólap","Parketta","Laminált padló","Fugázó","Szilikon","Homok","Kavics","Zúzott kő"];
 
-const S={tab:"rogzit",isAdmin:false,adminSubTab:"projektek",naplo:[],projektek:[],munkasok:[],naploFilter:"Mind",wStep:1,wForm:null,wSearch:{},wOpenKat:{},wOpenW:-1,ujPrjModal:false,ujMunkasModal:false,szerkesztMunkas:null,pinModal:false,szerkesztModal:false,szerkesztId:null,munkasStatFilter:"havi",online:navigator.onLine,toastMsg:null,adminPin:"1234"};
+const S={tab:"rogzit",isAdmin:false,munkasUser:null,loginModal:true,adminSubTab:"projektek",naplo:[],projektek:[],munkasok:[],naploFilter:"Mind",wStep:1,wForm:null,wSearch:{},wOpenKat:{},wOpenW:-1,ujPrjModal:false,ujMunkasModal:false,szerkesztMunkas:null,pinModal:false,szerkesztModal:false,szerkesztId:null,munkasStatFilter:"havi",online:navigator.onLine,toastMsg:null,adminPin:"1234"};
 
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const today=()=>new Date().toISOString().split("T")[0];
@@ -376,7 +376,7 @@ function renderStat(){
   <div class="stats">
     <div class="stat"><div class="sv">${naplo.length}</div><div class="sl">Bejegyzés</div></div>
     <div class="stat"><div class="sv">${egyediMunkasok}</div><div class="sl">Munkás</div></div>
-    <div class="stat"><div class="sv">${osszesMO}</div><div class="sl">Munkaóra</div></div>
+    <div class="stat"><div class="sv">${osszesMO} h<br><span style="font-size:14px;color:var(--t2)">${Math.round(osszesMO/8*10)/10} nap</span></div><div class="sl">Munkaóra</div></div>
     <div class="stat"><div class="sv">${Object.keys(prjMap).length}</div><div class="sl">Projekt</div></div>
   </div>
 `;
@@ -396,9 +396,9 @@ function renderStat(){
       ${Object.entries(munkasMap).sort((a,b)=>b[1].osszes-a[1].osszes).map(([nev,d])=>{
         let reszlet="";
         if(statFilter==="heti"){
-          reszlet=Object.entries(d.hetek).map(([h,o])=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--t2);padding:3px 0;border-bottom:1px solid var(--brd)"><span>${h}</span><span style="color:var(--acc);font-weight:700">${o} óra</span></div>`).join("");
+          reszlet=Object.entries(d.hetek).map(([h,o])=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--t2);padding:3px 0;border-bottom:1px solid var(--brd)"><span>${h}</span><span style="color:var(--acc);font-weight:700">${Math.round(o/8*2)/2} nap · ${o} h</span></div>`).join("");
         } else if(statFilter==="havi"){
-          reszlet=Object.entries(d.honapok).map(([h,o])=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--t2);padding:3px 0;border-bottom:1px solid var(--brd)"><span>${h}</span><span style="color:var(--acc);font-weight:700">${o} óra</span></div>`).join("");
+          reszlet=Object.entries(d.honapok).map(([h,o])=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--t2);padding:3px 0;border-bottom:1px solid var(--brd)"><span>${h}</span><span style="color:var(--acc);font-weight:700">${Math.round(o/8*2)/2} nap · ${o} h</span></div>`).join("");
         }
         const topAkt=Object.entries(d.aktivitasok).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([a])=>a).join(", ");
         const mInfo=S.munkasok.find(x=>x.nev===nev);
@@ -410,6 +410,7 @@ function renderStat(){
             </div>
             <div style="text-align:right">
               <div style="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:18px;color:var(--acc)">${d.osszes} óra</div>
+              <div style="font-size:11px;color:var(--t2)">${d.napok} nap (${d.osszes} h)</div>
 
             </div>
           </div>
@@ -622,6 +623,57 @@ function renderModals(){
     </div>`;
     setTimeout(()=>{const el=document.getElementById("pinInp");if(el)el.focus();},50);
   }
+  // Bejelentkezés modal - app indulásakor
+  if(S.loginModal && S.munkasok.length>0){
+    h+=`<div class="modal-bg" style="z-index:999">
+      <div class="modal">
+        <div style="text-align:center;margin-bottom:16px">
+          <div style="font-size:36px;margin-bottom:6px">👷</div>
+          <div class="modal-tit" style="margin-bottom:4px">Coolvarko Kft.</div>
+          <div style="font-size:13px;color:var(--t2)">Ki vagy te?</div>
+        </div>
+        <div class="fld"><label class="lbl">Válaszd ki a neved</label>
+          <select class="sel" id="loginNev">
+            <option value="">— válassz —</option>
+            ${S.munkasok.map(m=>`<option value="${m.nev}">${m.nev}${m.szakma?" – "+m.szakma:""}</option>`).join("")}
+          </select>
+        </div>
+        <button class="btn btn-amb" style="margin-bottom:10px" onclick="munkasBejelentkezes()">✓ Belépés</button>
+        <div style="text-align:center">
+          <button style="background:none;border:none;color:var(--t3);font-size:12px;cursor:pointer" 
+            onclick="S.pinModal=true;S.loginModal=false;render()">🔐 Admin belépés</button>
+        </div>
+      </div>
+    </div>`;
+  }
+  if(S.waModal && S.waMentendo){
+    const m=S.waMentendo;
+    const datum=new Date(m.datum).toLocaleDateString("hu-HU",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
+    const brigad=(m.brigad||[]);
+    const osszesMO=brigad.reduce((s,w)=>s+Number(w.munkaorák||0),0);
+    const munkasok=brigad.map(w=>{
+      const akt=(w.aktivitasok||[]).join(", ");
+      const anyagok=(w.felhasznaltAnyagok||[]).filter(a=>a.nev).map(a=>`${a.nev} ${a.mennyiseg} ${a.egyseg||""}`).join(", ");
+      return `👷 ${w.nev} — ${w.munkaorák}h${akt?" ("+akt+")":""}${anyagok?" | Anyag: "+anyagok:""}`;
+    }).join("\n");
+    const waText=`📋 *COOLVARKO KFT. — Napi napló*\n📅 ${datum}\n🏗️ ${m.projekt}\n\n${munkasok}\n\n⏱ Összesen: ${osszesMO/8} nap · ${osszesMO} munkaóra${m.megjegyzes?"\n📝 "+m.megjegyzes:""}\n\n🔗 Napló: https://ktgrofficial-dotcom.github.io/coolvarko-naplo/`;
+    const waUrl="https://wa.me/?text="+encodeURIComponent(waText);
+    h+=`<div class="modal-bg" onclick="if(event.target===this){S.waModal=false;render()}">
+      <div class="modal">
+        <div class="modal-tit">📱 Küldés WhatsApp-on</div>
+        <p style="font-size:13px;color:var(--t2);margin-bottom:12px">Az alábbi üzenet kerül elküldésre. Válaszd ki a csoportot vagy személyt:</p>
+        <div style="background:var(--bg);border:1px solid var(--brd);border-radius:8px;padding:11px;font-size:12px;white-space:pre-wrap;line-height:1.6;color:var(--t2);margin-bottom:14px;max-height:200px;overflow-y:auto">${waText}</div>
+        <div class="r2">
+          <button class="btn btn-s" onclick="S.waModal=false;render()">Kihagyom</button>
+          <a href="${waUrl}" target="_blank" onclick="S.waModal=false;setTimeout(render,100)" 
+            style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#25D366;color:#fff;border-radius:var(--r);padding:12px;font-weight:700;font-size:14px;text-decoration:none">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.089.537 4.049 1.475 5.759L0 24l6.404-1.432A11.926 11.926 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.368l-.36-.213-3.8.85.908-3.697-.234-.381A9.818 9.818 0 012.182 12C2.182 6.573 6.573 2.182 12 2.182c5.426 0 9.818 4.391 9.818 9.818 0 5.426-4.392 9.818-9.818 9.818z"/></svg>
+            WhatsApp megnyitása
+          </a>
+        </div>
+      </div>
+    </div>`;
+  }
   if(S.szerkesztModal && S.szerkesztId){
     const n = S.naplo.find(x=>x.id===S.szerkesztId);
     if(n){
@@ -724,7 +776,7 @@ function renderModals(){
 // ── Render ─────────────────────────────────────────────────────────────────
 function render(){
   const app=document.getElementById("app");if(!app)return;
-  const tabs=[{id:"rogzit",lbl:"Rögzít",ic:"plus"},{id:"naplo",lbl:"Napló",ic:"list"},{id:"stat",lbl:"Statisztika",ic:"chart"},{id:"admin",lbl:"Admin",ic:"shield",adm:true}];
+  const tabs=[{id:"rogzit",lbl:"Rögzít",ic:"plus"},{id:"naplo",lbl:"Napló",ic:"list"},{id:"stat",lbl:"Statisztika",ic:"chart"},{id:"admin",lbl:"Admin",ic:"shield",adm:true,hidden:!S.isAdmin&&!!S.munkasUser}];
   let content="";
   if(S.tab==="rogzit")content=renderWizard();
   else if(S.tab==="naplo")content=renderNaplo();
@@ -734,18 +786,29 @@ function render(){
     <div class="hdr">${LOGO}
       <div class="hdr-r">
         ${S.isAdmin&&S.tab==="admin"?`<span style="display:flex;align-items:center;gap:4px;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.35);color:var(--amber);padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700">${icon("shield",12,"var(--amber)")} ADMIN</span>`:""}
+        ${!S.isAdmin&&S.munkasUser?`<span style="display:flex;align-items:center;gap:5px;background:rgba(126,200,0,.1);border:1px solid rgba(126,200,0,.25);color:var(--acc);padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" onclick="S.loginModal=true;S.munkasUser=null;render()">👷 ${S.munkasUser} <span style="color:var(--t3);font-size:10px">↩</span></span>`:""}
         <div class="hdr-date">${new Date().toLocaleDateString("hu-HU",{month:"short",day:"numeric"})}</div>
         <div class="dot${S.online?"":" off"}"></div>
       </div>
     </div>
     <div class="cnt">${content}</div>
-    <div class="nav">${tabs.map(t=>`<button class="nb ${t.adm?"adm":""} ${S.tab===t.id?"on":""}" onclick="setTab('${t.id}')">${icon(t.ic,20)}<span>${t.lbl}</span></button>`).join("")}</div>
+    <div class="nav">${tabs.map(t=>`<button class="nb ${t.adm?"adm":""} ${S.tab===t.id?"on":""}" onclick="setTab('${t.id}')">${icon(t.ic,20)}<span>${t.lbl}</span></button>`).filter((_,i)=>!tabs[i].hidden).join("")}</div>
     ${S.toastMsg?`<div class="toast">${S.toastMsg}</div>`:""}
     ${renderModals()}`;
 }
 
 // ── Actions ────────────────────────────────────────────────────────────────
 window.setTab=(t)=>{if(t==="admin"&&!S.isAdmin){S.pinModal=true;render();return;}S.tab=t;render();};
+window.munkasBejelentkezes=()=>{
+  const nev=document.getElementById("loginNev")?.value;
+  if(!nev){toast("⚠️ Válaszd ki a neved!");return;}
+  S.munkasUser=nev;
+  S.loginModal=false;
+  // Előre kitöltjük a nevét az első munkás mezőbe
+  if(S.wForm && S.wForm.brigad.length>0) S.wForm.brigad[0].nev=nev;
+  toast("✓ Üdv, "+nev+"!");
+  render();
+};
 window.wNext=()=>{saveWInputs();S.wStep=Math.min(3,S.wStep+1);render();};
 window.wPrev=()=>{saveWInputs();S.wStep=Math.max(1,S.wStep-1);render();};
 
@@ -804,7 +867,10 @@ window.wMentes=async()=>{
     };
     await window.FB.naploMent(mentendo);
     S.wForm=freshForm();S.wStep=1;S.wSearch={};S.wOpenKat={};S.wOpenW=-1;
-    toast("✓ Bejegyzés mentve Firebase-be!");S.tab="naplo";render();
+    // WhatsApp üzenet generálása
+    S.waMentendo=mentendo;
+    S.waModal=true;
+    toast("✓ Bejegyzés mentve!");S.tab="naplo";render();
   }catch(e){toast("❌ Firebase hiba: "+e.message);console.error(e);}
 };
 
