@@ -449,14 +449,19 @@ function renderAdmin(){
         const nev = (w.nev||"").trim(); if(!nev) return;
         const m = S.munkasok.find(x => x.nev === nev);
         const tipus = m?.tipus || "alkalmi_szakmunkas";
-        const napidij = Number(m?.napidij || 0);
-        const bejel = Number(m?.bejelentes || 0);
+        const ora = Number(w.munkaorák || 0);
+        const arany = ora > 0 ? ora / 8 : 1; // fél nap = 0.5, teljes nap = 1
+        const napidijTeljes = Number(m?.napidij || 0);
+        const napidij = Math.round(napidijTeljes * arany);
+        const bejTeljes = Number(m?.bejelentes || 0);
+        const bejel = Math.round(bejTeljes * arany);
         const szochoHavi = Number(m?.szocho || 0);
-        const szochoNapi = szochoHavi > 0 ? Math.round(szochoHavi / 22) : 0;
+        const szochoNapiTeljes = szochoHavi > 0 ? Math.round(szochoHavi / 22) : 0;
+        const szochoNapi = Math.round(szochoNapiTeljes * arany);
         napiAdatok[datum].zseb += napidij;
         napiAdatok[datum].bejelentes += bejel;
         napiAdatok[datum].szocho += szochoNapi;
-        napiAdatok[datum].munkasok.push({nev, tipus, napidij, bejel, szochoNapi, szakma: m?.szakma||""});
+        napiAdatok[datum].munkasok.push({nev, tipus, napidij, bejel, szochoNapi, ora, szakma: m?.szakma||""});
       });
     });
 
@@ -513,7 +518,7 @@ function renderAdmin(){
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:4px 0;border-top:1px solid var(--brd);align-items:center">
                 <div>
                   <div style="font-size:12px;font-weight:600">${w.nev}</div>
-                  <div style="font-size:10px;color:var(--t3)">${w.szakma}</div>
+                  <div style="font-size:10px;color:var(--t3)">${w.szakma}${w.ora?" · "+w.ora+"h":""}</div>
                 </div>
                 <div style="text-align:right;font-size:12px;color:var(--acc);font-weight:700">${w.napidij?w.napidij.toLocaleString("hu-HU")+" Ft":"—"}</div>
                 <div style="text-align:right;font-size:12px;color:var(--amber);font-weight:700">${(w.bejel+w.szochoNapi)?(w.bejel+w.szochoNapi).toLocaleString("hu-HU")+" Ft":"—"}</div>
