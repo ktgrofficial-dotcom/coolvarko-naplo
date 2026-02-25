@@ -147,7 +147,7 @@ const AKTIVITASOK = {
 const EGYSEGEK=["m²","m³","fm","db","kg","t","zsák","l","óra"];
 const ANYAGOK=["Beton C16/20","Beton C20/25","Beton C25/30","Tégla (normál)","Tégla (porotherm)","Blokktégla","Zsalukő 15","Zsalukő 20","Zsalukő 30","Zsalukő 40","Cement","Mész","Gipsz","Vakolat gépi","Vakolat kézi","Betonacél Ø8","Betonacél Ø10","Betonacél Ø12","Betonacél Ø16","Hegesztett háló","Zsalu deszka","Zsalu tábla","Állvány elem","Vízszigetelő fólia","Bitumen lemez","Delta-MS drénlemez","XPS szigetelés","EPS szigetelés","Ásványgyapot","Gipszkarton lap","GK profil","Csempe","Járólap","Parketta","Laminált padló","Fugázó","Szilikon","Homok","Kavics","Zúzott kő"];
 
-const S={tab:"rogzit",isAdmin:false,adminSubTab:"projektek",naplo:[],projektek:[],munkasok:[],naploFilter:"Mind",wStep:1,wForm:null,wSearch:{},wOpenKat:{},wOpenW:-1,ujPrjModal:false,ujMunkasModal:false,pinModal:false,szerkesztModal:false,szerkesztId:null,munkasStatFilter:"havi",online:navigator.onLine,toastMsg:null,adminPin:"1234"};
+const S={tab:"rogzit",isAdmin:false,adminSubTab:"projektek",naplo:[],projektek:[],munkasok:[],naploFilter:"Mind",wStep:1,wForm:null,wSearch:{},wOpenKat:{},wOpenW:-1,ujPrjModal:false,ujMunkasModal:false,szerkesztMunkas:null,pinModal:false,szerkesztModal:false,szerkesztId:null,munkasStatFilter:"havi",online:navigator.onLine,toastMsg:null,adminPin:"1234"};
 
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const today=()=>new Date().toISOString().split("T")[0];
@@ -403,14 +403,6 @@ function renderStat(){
   }
 
   if(Object.keys(prjMap).length) h+=`<div class="card"><div class="ctit">🏗️ Projektek</div>${Object.entries(prjMap).map(([p,d])=>`<div style="margin-bottom:9px;padding:8px 10px;background:var(--s2);border-radius:8px"><div style="font-weight:600;font-size:14px;margin-bottom:2px">${p}</div><div style="font-size:13px;color:var(--t2)">${d.napok} munkanap · ${d.orak} munkaóra</div></div>`).join("")}</div>`;
-  if(naplo.length>0){
-    h+=`<div class="card" style="border-color:rgba(126,200,0,.4);margin-top:11px">
-      <div class="ctit">🤖 AI összefoglaló</div>
-      <p style="font-size:12px;color:var(--t2);margin-bottom:10px">Másold be Claude-nak ajánlatkészítéshez vagy elemzéshez:</p>
-      <div id="aiBox" style="background:var(--bg);border:1px solid var(--brd);border-radius:8px;padding:12px;font-size:11px;color:var(--t2);white-space:pre-wrap;font-family:monospace;max-height:200px;overflow-y:auto;line-height:1.5;user-select:all">${genAI(naplo)}</div>
-      <button class="btn btn-p" style="margin-top:10px" onclick="copyAI()">📋 Másolás Claude-nak</button>
-    </div>`;
-  }
   return h;
 }
 
@@ -474,21 +466,40 @@ function renderAdmin(){
       <button class="btn btn-amb" style="margin-bottom:9px" onclick="exportCSV()">${icon("dl",17)} CSV exportálás (Excel)</button>
       <button class="btn btn-s" onclick="exportJSON()">${icon("dl",17)} JSON exportálás</button>
     </div>`;
+    if(S.naplo.length>0){
+      h+=`<div class="adm-card" style="border-color:rgba(126,200,0,.4);margin-top:11px">
+        <div class="ctit">🤖 AI összefoglaló (Claude-nak)</div>
+        <p style="font-size:12px;color:var(--t2);margin-bottom:10px">Másold be Claude-nak ajánlatkészítéshez vagy elemzéshez:</p>
+        <div id="aiBox" style="background:var(--bg);border:1px solid var(--brd);border-radius:8px;padding:12px;font-size:11px;color:var(--t2);white-space:pre-wrap;font-family:monospace;max-height:220px;overflow-y:auto;line-height:1.5;user-select:all">${genAI(S.naplo)}</div>
+        <button class="btn btn-p" style="margin-top:10px" onclick="copyAI()">📋 Másolás Claude-nak</button>
+      </div>`;
+    }
   } else if(sub==="munkasok"){
     h+=`<button class="btn btn-amb" style="margin-bottom:13px" onclick="S.ujMunkasModal=true;render()">${icon("plus",18)} Új munkás felvétele</button>`;
     if(!S.munkasok.length) h+=`<div class="empty"><p>Még nincs munkás a névjegyzékben</p></div>`;
     S.munkasok.forEach(m=>{
       const osszesMO=S.naplo.reduce((s,n)=>s+(n.brigad||[]).filter(w=>(w.nev||"").trim()===m.nev).reduce((ss,w)=>ss+Number(w.munkaorák||0),0),0);
-      const osszesBer=osszesMO*(Number(m.orabér)||0);
+      const napidij=m.napidij||0, bejelentes=m.bejelentes||0, szocho=m.szocho||0;
+      const tipusLabel=m.tipus==="szerzodesess"?"Szerz. szakmunkás":m.tipus==="szerzodesess_seged"?"Szerz. segédmunkás":m.tipus==="alkalmi_seged"?"Alkalmi segéd":"Alkalmi szakmunkás";
       h+=`<div class="adm-card"><div style="display:flex;align-items:flex-start;justify-content:space-between">
         <div style="flex:1">
           <div style="font-weight:700;font-size:16px">${m.nev}</div>
-          ${m.szakma?`<div style="font-size:12px;color:var(--amber);font-weight:600">${m.szakma}</div>`:""}
-          <div style="font-size:12px;color:var(--t2);margin-top:3px">${m.orabér?`⏱ ${m.orabér} Ft/óra`:""}</div>
-          <div style="font-size:12px;color:var(--t2)">${osszesMO} ledolgozott óra${osszesBer?` · <span style="color:var(--acc);font-weight:700">${osszesBer.toLocaleString("hu-HU")} Ft</span>`:""}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px">
+            ${m.szakma?`<span style="font-size:11px;color:var(--amber);font-weight:600;background:rgba(245,158,11,.12);padding:2px 7px;border-radius:99px">${m.szakma}</span>`:""}
+            <span style="font-size:11px;color:var(--a2);background:rgba(59,130,246,.12);padding:2px 7px;border-radius:99px">${tipusLabel}</span>
+          </div>
+          <div style="margin-top:7px;font-size:12px;color:var(--t2)">
+            ${napidij?`💵 Napi zseb: <strong style="color:var(--txt)">${napidij.toLocaleString("hu-HU")} Ft</strong>`:""}
+            ${bejelentes?` · 📋 Bejelentés: <strong style="color:var(--txt)">${bejelentes.toLocaleString("hu-HU")} Ft/nap</strong>`:""}
+            ${szocho?` · 🏦 Szocho/TB/SZJA: <strong style="color:var(--txt)">${szocho.toLocaleString("hu-HU")} Ft/hó</strong>`:""}
+          </div>
+          <div style="font-size:12px;color:var(--t3);margin-top:3px">${osszesMO} ledolgozott óra</div>
         </div>
-        <button class="btn btn-d" style="padding:6px 9px;flex-shrink:0" onclick="munkasTorol('${m.id}','${m.nev.replace(/'/g,"\\'")}')">
-          ${icon("trash",14)}</button>
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          <button class="btn btn-s" style="padding:6px 9px;width:auto;font-size:11px" onclick="munkasEdit('${m.id}')">${icon("edit",13)}</button>
+          <button class="btn btn-d" style="padding:6px 9px" onclick="munkasTorol('${m.id}','${m.nev.replace(/'/g,"\\'")}')">
+            ${icon("trash",14)}</button>
+        </div>
       </div></div>`;
     });
   } else if(sub==="beallitas"){
@@ -569,23 +580,34 @@ function renderModals(){
     }
   }
   if(S.ujMunkasModal){
-    h+=`<div class="modal-bg" onclick="if(event.target===this){S.ujMunkasModal=false;render()}">
+    const szM=S.szerkesztMunkas;
+    h+=`<div class="modal-bg" onclick="if(event.target===this){S.ujMunkasModal=false;S.szerkesztMunkas=null;render()}">
       <div class="modal">
-        <div class="modal-tit">👷 Új munkás felvétele</div>
-        <div class="fld"><label class="lbl">Teljes név *</label><input class="inp" id="mNev" placeholder="pl. Varga Ernő"/></div>
+        <div class="modal-tit">${szM?"✏️ Munkás szerkesztése":"👷 Új munkás felvétele"}</div>
+        <div class="fld"><label class="lbl">Teljes név *</label>
+          <input class="inp" id="mNev" placeholder="pl. Varga Ernő" value="${szM?szM.nev:""}"/></div>
         <div class="fld"><label class="lbl">Szakma</label>
           <select class="sel" id="mSzakma">
             <option value="">— válassz —</option>
-            <option>Kőműves</option><option>Segédmunkás</option><option>Vasas</option>
-            <option>Betonozó</option><option>Burkoló</option><option>Vakoló</option>
-            <option>Gépkezelő</option><option>Ács</option><option>Festő</option>
-            <option>Villanyszerelő</option><option>Vízvezeték-szerelő</option><option>Egyéb</option>
+            ${["Kőműves","Segédmunkás","Vasas","Betonozó","Burkoló","Vakoló","Gépkezelő","Ács","Festő","Villanyszerelő","Vízvezeték-szerelő","Egyéb"].map(s=>`<option${szM&&szM.szakma===s?" selected":""}>${s}</option>`).join("")}
           </select></div>
-        <div class="fld"><label class="lbl">Órabér (Ft/óra)</label><input type="number" class="inp" id="mOrabér" placeholder="pl. 2500" min="0" step="100"/></div>
-        <div class="fld"><label class="lbl">Telefonszám</label><input type="tel" class="inp" id="mTel" placeholder="pl. +36 30 123 4567"/></div>
-        <div class="r2">
-          <button class="btn btn-s" onclick="S.ujMunkasModal=false;render()">Mégse</button>
-          <button class="btn btn-amb" onclick="ujMunkasMent()">Felvétel</button>
+        <div class="fld"><label class="lbl">Telefonszám</label>
+          <input type="tel" class="inp" id="mTel" placeholder="+36 30 123 4567" value="${szM?szM.telefon||"":""}"/></div>
+        <hr class="divd"/>
+        <div style="font-size:12px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">💼 Foglalkoztatás típusa</div>
+        <div class="fld"><label class="lbl">Típus</label>
+          <select class="sel" id="mTipus" onchange="munkasModalFrissit()">
+            <option value="alkalmi_szakmunkas"${!szM||szM.tipus==="alkalmi_szakmunkas"?" selected":""}>Alkalmi — Szakmunkás</option>
+            <option value="alkalmi_seged"${szM&&szM.tipus==="alkalmi_seged"?" selected":""}>Alkalmi — Segédmunkás</option>
+            <option value="szerzodesess"${szM&&szM.tipus==="szerzodesess"?" selected":""}>Szerződéses — Szakmunkás</option>
+            <option value="szerzodesess_seged"${szM&&szM.tipus==="szerzodesess_seged"?" selected":""}>Szerződéses — Segédmunkás</option>
+          </select></div>
+        <div id="mKoltsegBox">
+          ${renderMunkasKoltsegForm(szM)}
+        </div>
+        <div class="r2" style="margin-top:13px">
+          <button class="btn btn-s" onclick="S.ujMunkasModal=false;S.szerkesztMunkas=null;render()">Mégse</button>
+          <button class="btn btn-amb" onclick="ujMunkasMent()">✓ Mentés</button>
         </div>
       </div>
     </div>`;
@@ -685,22 +707,55 @@ window.wMentes=async()=>{
   }catch(e){toast("❌ Firebase hiba: "+e.message);console.error(e);}
 };
 
+// Munkás modál: típustól függő mezők
+function renderMunkasKoltsegForm(m){
+  const tipus=document.getElementById("mTipus")?.value||(m?m.tipus:"alkalmi_szakmunkas");
+  if(tipus==="szerzodesess" || tipus==="szerzodesess_seged"){
+    return `<div class="fld"><label class="lbl">Napi nettó zseb (Ft/nap)</label>
+      <input type="number" class="inp" id="mNapidij" value="${m?m.napidij||"":""}" placeholder="pl. 38000" min="0" step="500"/></div>
+    <div class="fld"><label class="lbl">Szocho + TB + SZJA (Ft/hó) — amit te fizetsz</label>
+      <input type="number" class="inp" id="mSzocho" value="${m?m.szocho||"":""}" placeholder="pl. 65000" min="0" step="1000"/></div>
+    <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:9px;font-size:12px;color:var(--t2)">
+      📌 Teljes napi költség = napi zseb + (Szocho/hó ÷ 22 munkanap)</div>`;
+  } else {
+    const napidijDef=tipus==="alkalmi_seged"?25000:35000;
+    return `<div class="fld"><label class="lbl">Napi nettó zseb (Ft/nap)</label>
+      <input type="number" class="inp" id="mNapidij" value="${m?m.napidij||"":napidijDef}" placeholder="pl. ${napidijDef}" min="0" step="500"/></div>
+    <div class="fld"><label class="lbl">Bejelentési költség (Ft/nap) — amit te fizetsz</label>
+      <input type="number" class="inp" id="mBejelentes" value="${m?m.bejelentes||"":4800}" placeholder="pl. 4800" min="0" step="100"/></div>
+    <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:9px;font-size:12px;color:var(--t2)">
+      📌 Teljes napi költség = napi zseb + bejelentési díj</div>`;
+  }
+}
+window.munkasModalFrissit=()=>{
+  const box=document.getElementById("mKoltsegBox");
+  if(box) box.innerHTML=renderMunkasKoltsegForm(S.szerkesztMunkas);
+};
 window.ujMunkasMent=async()=>{
   const nev=document.getElementById("mNev")?.value.trim();
   if(!nev){toast("⚠️ Add meg a munkás nevét!");return;}
-  if(S.munkasok.find(m=>m.nev===nev)){toast("⚠️ Ez a munkás már szerepel a listában!");return;}
+  const szM=S.szerkesztMunkas;
+  if(!szM && S.munkasok.find(m=>m.nev===nev)){toast("⚠️ Ez a munkás már szerepel!");return;}
+  const tipus=document.getElementById("mTipus")?.value||"alkalmi_szakmunkas";
+  const adat={
+    nev,
+    szakma:document.getElementById("mSzakma")?.value||"",
+    telefon:document.getElementById("mTel")?.value||"",
+    tipus,
+    napidij:Number(document.getElementById("mNapidij")?.value)||0,
+    bejelentes:Number(document.getElementById("mBejelentes")?.value)||0,
+    szocho:Number(document.getElementById("mSzocho")?.value)||0,
+  };
   try{
-    await window.FB.munkaMent({
-      nev,
-      szakma:document.getElementById("mSzakma")?.value||"",
-      orabér:Number(document.getElementById("mOrabér")?.value)||0,
-      telefon:document.getElementById("mTel")?.value||""
-    });
-    S.ujMunkasModal=false;
-    toast("✓ Munkás felvéve!");render();
+    if(szM){await window.FB.munkaFrissit(szM.id,adat);toast("✓ Munkás adatok mentve!");}
+    else{await window.FB.munkaMent(adat);toast("✓ Munkás felvéve!");}
+    S.ujMunkasModal=false;S.szerkesztMunkas=null;render();
   }catch(e){toast("❌ Hiba: "+e.message);}
 };
-
+window.munkasEdit=(id)=>{
+  S.szerkesztMunkas=S.munkasok.find(m=>m.id===id)||null;
+  S.ujMunkasModal=true;render();
+};
 window.munkasTorol=async(id,nev)=>{
   if(!confirm(`Töröljük: "${nev}"?`))return;
   try{await window.FB.munkaTorol(id);toast("Munkás törölve.");}catch(e){toast("❌ Hiba!");}
