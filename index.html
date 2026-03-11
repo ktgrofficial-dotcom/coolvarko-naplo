@@ -469,12 +469,13 @@ function renderAdmin(){
         const m = S.munkasok.find(x => x.nev === nev);
         const tipus = m?.tipus || "alkalmi_szakmunkas";
         const ora = Number(w.munkaorák || 0);
-        const arany = ora > 0 ? ora / 8 : 1; // fél nap = 0.5, teljes nap = 1
-        const napidijTeljes = Number(m?.napidij || 0);
+        const arany = ora > 0 ? ora / 8 : 1;
+        // Bér: először a naplóban elmentett adat, ha nincs akkor névjegyzékből (régi bejegyzések)
+        const napidijTeljes = Number(w.napidij ?? m?.napidij ?? 0);
+        const bejTeljes = Number(w.bejelentes ?? m?.bejelentes ?? 0);
+        const szochoHavi = Number(w.szocho ?? m?.szocho ?? 0);
         const napidij = Math.round(napidijTeljes * arany);
-        const bejTeljes = Number(m?.bejelentes || 0);
         const bejel = Math.round(bejTeljes * arany);
-        const szochoHavi = Number(m?.szocho || 0);
         const szochoNapiTeljes = szochoHavi > 0 ? Math.round(szochoHavi / 22) : 0;
         const szochoNapi = Math.round(szochoNapiTeljes * arany);
         napiAdatok[datum].zseb += napidij;
@@ -898,14 +899,24 @@ window.wMentes=async()=>{
       datum:f.datum,
       projekt:f.projekt,
       megjegyzes:f.megjegyzes||"",
-      brigad:f.brigad.map(w=>({
-        nev:(w.nev||'').trim(),
-        munkaorák:Number(w.munkaorák)||8,
-        aktivitasok:w.aktivitasok||[],
-        aktivitasokMennyiseg:w.aktivitasokMennyiseg||{},
-        felhasznaltAnyagok:w.felhasznaltAnyagok||[],
-        igenyeltAnyagok:w.igenyeltAnyagok||[],
-      })),
+      brigad:f.brigad.map(w=>{
+        const nev=(w.nev||'').trim();
+        const m=S.munkasok.find(x=>x.nev===nev);
+        return {
+          nev,
+          munkaorák:Number(w.munkaorák)||8,
+          aktivitasok:w.aktivitasok||[],
+          aktivitasokMennyiseg:w.aktivitasokMennyiseg||{},
+          felhasznaltAnyagok:w.felhasznaltAnyagok||[],
+          igenyeltAnyagok:w.igenyeltAnyagok||[],
+          // Bér adatok mentéskor rögzítve — visszamenőleg nem változik
+          tipus:m?.tipus||"",
+          napidij:Number(m?.napidij||0),
+          bejelentes:Number(m?.bejelentes||0),
+          szocho:Number(m?.szocho||0),
+          berRogzitve:new Date().toISOString(),
+        };
+      }),
       rogzitve:new Date().toISOString()
     };
     await window.FB.naploMent(mentendo);
