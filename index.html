@@ -598,7 +598,10 @@ Coolvarko Kft. 🏠`;
 
     h+=`<div class="adm-card"><div class="ctit"><span style="color:var(--amber)">📤</span> Export</div>
       <button class="btn btn-amb" style="margin-bottom:9px" onclick="exportCSV()">${icon("dl",17)} CSV exportálás (Excel)</button>
-      <button class="btn btn-s" onclick="exportJSON()">${icon("dl",17)} JSON exportálás</button>
+      <button class="btn btn-s" style="margin-bottom:9px" onclick="exportJSON()">${icon("dl",17)} JSON exportálás</button>
+      <hr class="divd"/>
+      <div style="font-size:12px;color:var(--t2);margin-bottom:8px">⚠️ Egyszeri művelet: a meglévő bejegyzésekbe rögzíti a jelenlegi névjegyzékből a béradatokat. Utána a névjegyzék módosítása nem változtatja vissza őket.</div>
+      <button class="btn btn-s" style="border-color:rgba(245,158,11,.4);color:var(--amber)" onclick="berAdatRogzit()">🔒 Béradatok rögzítése meglévő bejegyzésekbe</button>
     </div>`;
     if(S.naplo.length>0){
       h+=`<div class="adm-card" style="border-color:rgba(126,200,0,.4);margin-top:11px">
@@ -1192,6 +1195,35 @@ https://ktgrofficial-dotcom.github.io/coolvarko-naplo/
 ━━━━━━━━━━━━━━━━━━━━
 Coolvarko Kft. 🏠`;
   navigator.clipboard.writeText(szoveg).then(()=>toast("📋 Másolva! Illeszd be Messengerbe.")).catch(()=>toast("❌ Másolás sikertelen"));
+};
+window.berAdatRogzit=async()=>{
+  if(!confirm("Rögzíti a jelenlegi névjegyzék béradatait az összes meglévő bejegyzésbe ahol még nincs bér mentve. Folytatod?")) return;
+  let frissitve=0, kihagyva=0;
+  const feladatok=[];
+  S.naplo.forEach(n=>{
+    const ujBrigad=n.brigad.map(w=>{
+      // Ha már van mentett bér, nem bántjuk
+      if(w.berRogzitve) { kihagyva++; return w; }
+      const m=S.munkasok.find(x=>x.nev===(w.nev||"").trim());
+      if(!m) { kihagyva++; return w; }
+      frissitve++;
+      return {
+        ...w,
+        tipus:m.tipus||"",
+        napidij:Number(m.napidij||0),
+        bejelentes:Number(m.bejelentes||0),
+        szocho:Number(m.szocho||0),
+        berRogzitve:new Date().toISOString(),
+      };
+    });
+    // Csak ha változott valami
+    const valtozott=ujBrigad.some((w,i)=>w.berRogzitve!==n.brigad[i]?.berRogzitve);
+    if(valtozott) feladatok.push(window.FB.naploFrissit(n.id,{brigad:ujBrigad}));
+  });
+  try{
+    await Promise.all(feladatok);
+    toast(`✓ Kész! ${frissitve} munkás bére rögzítve, ${kihagyva} már korábban rögzítve volt.`);
+  }catch(e){toast("❌ Hiba: "+e.message);}
 };
 window.exportCSV=()=>{
   const lines=["Dátum;Projekt;Munkás;Munkaóra;Tevékenységek;Felhasznált anyagok;Igényelt anyagok;Megjegyzés"];
