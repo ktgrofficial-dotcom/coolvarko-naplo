@@ -436,6 +436,8 @@ function renderAdmin(){
     <button class="fbb ${sub==="projektek"?"on":""}" onclick="S.adminSubTab='projektek';render()">🏗️ Projektek</button>
     <button class="fbb ${sub==="naplo"?"on":""}" onclick="S.adminSubTab='naplo';render()">📋 Napló</button>
     <button class="fbb ${sub==="export"?"on":""}" onclick="S.adminSubTab='export';render()">📤 Export</button>
+    <button class="fbb ${sub==="prjkoltseg"?"on":""}" onclick="S.adminSubTab='prjkoltseg';render()">🏗️ Projekt €</button>
+    <button class="fbb ${sub==="berkontas"?"on":""}" onclick="S.adminSubTab='berkontas';render()">💶 Bér bontás</button>
     <button class="fbb ${sub==="munkasok"?"on":""}" onclick="S.adminSubTab='munkasok';render()">👷 Munkások</button>
     <button class="fbb ${sub==="beallitas"?"on":""}" onclick="S.adminSubTab='beallitas';render()">⚙️ Beállítás</button>
   </div>`;
@@ -611,6 +613,114 @@ Coolvarko Kft. 🏠`;
         <button class="btn btn-p" style="margin-top:10px" onclick="copyAI()">📋 Másolás Claude-nak</button>
       </div>`;
     }
+  } else if(sub==="prjkoltseg"){
+    // Projekt szintű bérköltség
+    const selPrj = S.adminPrjSel || (S.projektek.length ? S.projektek[0].nev : "");
+    if(!S.adminPrjSel && S.projektek.length) S.adminPrjSel = S.projektek[0].nev;
+    h+=`<div class="fld" style="margin-bottom:13px">
+      <label class="lbl">Projekt kiválasztása</label>
+      <select class="sel" onchange="S.adminPrjSel=this.value;render()">
+        ${S.projektek.map(p=>`<option value="${p.nev}"${p.nev===selPrj?" selected":""}>${p.nev}</option>`).join("")}
+      </select>
+    </div>`;
+    if(selPrj){
+      const prjNaplo = S.naplo.filter(n=>n.projekt===selPrj);
+      const osszesMO = prjNaplo.reduce((s,n)=>s+(n.brigad||[]).reduce((ss,w)=>ss+Number(w.munkaorák||0),0),0);
+      const napok = [...new Set(prjNaplo.map(n=>n.datum))].length;
+      h+=`<div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:11px;display:flex;gap:12px">
+        <div style="text-align:center;flex:1"><div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:var(--acc)">${napok}</div><div style="font-size:11px;color:var(--t2)">munkanap</div></div>
+        <div style="text-align:center;flex:1"><div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:var(--acc)">${osszesMO} h</div><div style="font-size:11px;color:var(--t2)">munkaóra</div></div>
+      </div>`;
+      if(prjNaplo.length){
+        const napiAdat = berKoltsegSzamol(prjNaplo);
+        h += renderBerKimutatas(napiAdat, selPrj+" — bérköltség");
+      } else {
+        h+=`<div class="empty"><p>Nincs bejegyzés ehhez a projekthez</p></div>`;
+      }
+    }
+
+  } else if(sub==="berkontas"){
+    // Munkás szintű heti/havi bér bontás
+    const berFilter = S.berKontasFilter || "havi";
+    h+=`<div class="fb" style="margin-bottom:13px">
+      <button class="fbb ${berFilter==="heti"?"on":""}" onclick="S.berKontasFilter='heti';render()">Heti</button>
+      <button class="fbb ${berFilter==="havi"?"on":""}" onclick="S.berKontasFilter='havi';render()">Havi</button>
+      <button class="fbb ${berFilter==="ossz"?"on":""}" onclick="S.berKontasFilter='ossz';render()">Összesített</button>
+    </div>`;
+
+    // Munkásonként összegyűjtjük a bér adatokat
+    const munkasMap = {};
+    S.naplo.forEach(n => {
+      (n.brigad||[]).forEach(w => {
+        const nev = (w.nev||"").trim(); if(!nev) return;
+        const m = S.munkasok.find(x=>x.nev===nev);
+        const ora = Number(w.munkaorák||0);
+        const arany = ora > 0 ? ora/8 : 1;
+        const napidij = Math.round(Number(w.napidij ?? m?.napidij ?? 0) * arany);
+        const bejel = Math.round(Number(w.bejelentes ?? m?.bejelentes ?? 0) * arany);
+        const szochoHavi = Number(w.szocho ?? m?.szocho ?? 0);
+        const szochoNapi = Math.round((szochoHavi>0?Math.round(szochoHavi/22):0)*arany);
+        const osszKoltseg = napidij + bejel + szochoNapi;
+        if(!munkasMap[nev]) munkasMap[nev]={szakma:m?.szakma||"",ossZseb:0,ossBejel:0,ossOssz:0,hetek:{},honapok:{}};
+        munkasMap[nev].ossZseb+=napidij;
+        munkasMap[nev].ossBejel+=bejel+szochoNapi;
+        munkasMap[nev].ossOssz+=osszKoltseg;
+        // Heti/havi csoportosítás
+        const hetKey = getWeekLabel(new Date(n.datum));
+        const hoKey = getMonthName(new Date(n.datum));
+        if(!munkasMap[nev].hetek[hetKey]) munkasMap[nev].hetek[hetKey]={zseb:0,bejel:0,ossz:0};
+        munkasMap[nev].hetek[hetKey].zseb+=napidij;
+        munkasMap[nev].hetek[hetKey].bejel+=bejel+szochoNapi;
+        munkasMap[nev].hetek[hetKey].ossz+=osszKoltseg;
+        if(!munkasMap[nev].honapok[hoKey]) munkasMap[nev].honapok[hoKey]={zseb:0,bejel:0,ossz:0};
+        munkasMap[nev].honapok[hoKey].zseb+=napidij;
+        munkasMap[nev].honapok[hoKey].bejel+=bejel+szochoNapi;
+        munkasMap[nev].honapok[hoKey].ossz+=osszKoltseg;
+      });
+    });
+
+    if(!Object.keys(munkasMap).length){h+=`<div class="empty"><p>Nincs adat</p></div>`;}
+    Object.entries(munkasMap).sort((a,b)=>b[1].ossOssz-a[1].ossOssz).forEach(([nev,d])=>{
+      const idoszak = berFilter==="heti" ? Object.entries(d.hetek) : berFilter==="havi" ? Object.entries(d.honapok) : [];
+      h+=`<div class="adm-card" style="margin-bottom:11px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <div style="font-weight:700;font-size:15px">${nev}</div>
+            ${d.szakma?`<div style="font-size:11px;color:var(--amber)">${d.szakma}</div>`:""}
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;color:var(--amber)">${d.ossOssz.toLocaleString("hu-HU")} Ft</div>
+            <div style="font-size:10px;color:var(--t3)">összes költség</div>
+          </div>
+        </div>
+        <!-- Összesítő sor -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:${idoszak.length?"10px":"0"}">
+          <div style="background:var(--s2);border-radius:6px;padding:7px;text-align:center">
+            <div style="font-size:10px;color:var(--t2)">💵 Zseb</div>
+            <div style="font-weight:700;font-size:13px;color:var(--acc)">${d.ossZseb.toLocaleString("hu-HU")} Ft</div>
+          </div>
+          <div style="background:var(--s2);border-radius:6px;padding:7px;text-align:center">
+            <div style="font-size:10px;color:var(--t2)">📋 Bejelentés</div>
+            <div style="font-weight:700;font-size:13px;color:var(--amber)">${d.ossBejel.toLocaleString("hu-HU")} Ft</div>
+          </div>
+          <div style="background:rgba(245,158,11,.12);border-radius:6px;padding:7px;text-align:center">
+            <div style="font-size:10px;color:var(--t2)">💰 Összesen</div>
+            <div style="font-weight:700;font-size:13px;color:var(--amber)">${d.ossOssz.toLocaleString("hu-HU")} Ft</div>
+          </div>
+        </div>
+        <!-- Időszak bontás -->
+        ${idoszak.length?`<div style="border-top:1px solid var(--brd);padding-top:8px">
+          ${idoszak.map(([ido,v])=>`
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;padding:5px 0;border-bottom:1px solid var(--brd);font-size:12px;align-items:center">
+              <span style="color:var(--t2)">${ido}</span>
+              <span style="text-align:right;color:var(--acc);font-weight:700">${v.zseb.toLocaleString("hu-HU")} Ft</span>
+              <span style="text-align:right;color:var(--amber);font-weight:700">${v.bejel.toLocaleString("hu-HU")} Ft</span>
+              <span style="text-align:right;color:var(--txt);font-weight:800">${v.ossz.toLocaleString("hu-HU")} Ft</span>
+            </div>`).join("")}
+        </div>`:""}
+      </div>`;
+    });
+
   } else if(sub==="munkasok"){
     h+=`<button class="btn btn-amb" style="margin-bottom:13px" onclick="S.ujMunkasModal=true;render()">${icon("plus",18)} Új munkás felvétele</button>`;
     if(!S.munkasok.length) h+=`<div class="empty"><p>Még nincs munkás a névjegyzékben</p></div>`;
@@ -1225,6 +1335,93 @@ window.berAdatRogzit=async()=>{
     toast(`✓ Kész! ${frissitve} munkás bére rögzítve, ${kihagyva} már korábban rögzítve volt.`);
   }catch(e){toast("❌ Hiba: "+e.message);}
 };
+
+function berKoltsegSzamol(naploLista) {
+  const napiAdatok = {};
+  naploLista.forEach(n => {
+    const datum = n.datum;
+    if(!napiAdatok[datum]) napiAdatok[datum] = {zseb:0, bejelentes:0, szocho:0, munkasok:[]};
+    (n.brigad||[]).forEach(w => {
+      const nev = (w.nev||"").trim(); if(!nev) return;
+      const m = S.munkasok.find(x => x.nev === nev);
+      const ora = Number(w.munkaorák || 0);
+      const arany = ora > 0 ? ora / 8 : 1;
+      const napidijTeljes = Number(w.napidij ?? m?.napidij ?? 0);
+      const bejTeljes = Number(w.bejelentes ?? m?.bejelentes ?? 0);
+      const szochoHavi = Number(w.szocho ?? m?.szocho ?? 0);
+      const napidij = Math.round(napidijTeljes * arany);
+      const bejel = Math.round(bejTeljes * arany);
+      const szochoNapi = szochoHavi > 0 ? Math.round(Math.round(szochoHavi/22) * arany) : 0;
+      napiAdatok[datum].zseb += napidij;
+      napiAdatok[datum].bejelentes += bejel;
+      napiAdatok[datum].szocho += szochoNapi;
+      napiAdatok[datum].munkasok.push({nev, napidij, bejel, szochoNapi, ora, szakma: m?.szakma||""});
+    });
+  });
+  return napiAdatok;
+}
+
+function renderBerKimutatas(napiAdatok, cim) {
+  const osszesMunkasZseb = Object.values(napiAdatok).reduce((s,d)=>s+d.zseb,0);
+  const osszesBejelentes = Object.values(napiAdatok).reduce((s,d)=>s+d.bejelentes,0);
+  const osszesSzocho = Object.values(napiAdatok).reduce((s,d)=>s+d.szocho,0);
+  const osszesMind = osszesMunkasZseb + osszesBejelentes + osszesSzocho;
+  const napiSorrendek = Object.entries(napiAdatok).sort((a,b)=>a[0].localeCompare(b[0]));
+  let gongyolito = 0;
+  let h = "";
+  h+=`<div class="adm-card" style="border-color:rgba(245,158,11,.5);margin-bottom:13px">
+    <div class="ctit"><span style="color:var(--amber)">💰</span> ${cim}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+      <div style="background:var(--s2);border-radius:8px;padding:9px;text-align:center">
+        <div style="font-size:11px;color:var(--t2);margin-bottom:2px">💵 Zseb</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;color:var(--acc)">${osszesMunkasZseb.toLocaleString("hu-HU")} Ft</div>
+      </div>
+      <div style="background:var(--s2);border-radius:8px;padding:9px;text-align:center">
+        <div style="font-size:11px;color:var(--t2);margin-bottom:2px">📋 Bejelentés</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;color:var(--amber)">${(osszesBejelentes+osszesSzocho).toLocaleString("hu-HU")} Ft</div>
+      </div>
+      <div style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:9px;text-align:center">
+        <div style="font-size:11px;color:var(--t2);margin-bottom:2px">💰 Összes</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;color:var(--amber)">${osszesMind.toLocaleString("hu-HU")} Ft</div>
+      </div>
+    </div>
+    <div style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Napi bontás</div>
+    ${napiSorrendek.map(([datum, d]) => {
+      const napiOsszeg = d.zseb + d.bejelentes + d.szocho;
+      gongyolito += napiOsszeg;
+      const datumStr = new Date(datum).toLocaleDateString("hu-HU", {month:"long", day:"numeric", weekday:"short"});
+      return `<div style="border:1px solid var(--brd);border-radius:8px;margin-bottom:8px;overflow:hidden">
+        <div style="background:var(--s2);padding:9px 11px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-weight:700;font-size:13px">📅 ${datumStr}</span>
+          <div style="text-align:right">
+            <span style="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;color:var(--amber)">${napiOsszeg.toLocaleString("hu-HU")} Ft</span>
+            <div style="font-size:10px;color:var(--t3)">Göngyölítve: ${gongyolito.toLocaleString("hu-HU")} Ft</div>
+          </div>
+        </div>
+        <div style="padding:8px 11px">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:7px;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase">
+            <span>Munkás</span><span style="text-align:right">Zseb</span><span style="text-align:right">Bejelentés</span>
+          </div>
+          ${d.munkasok.map(w=>`
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:4px 0;border-top:1px solid var(--brd);align-items:center">
+              <div>
+                <div style="font-size:12px;font-weight:600">${w.nev}</div>
+                <div style="font-size:10px;color:var(--t3)">${w.szakma}${w.ora?" · "+w.ora+"h":""}</div>
+              </div>
+              <div style="text-align:right;font-size:12px;color:var(--acc);font-weight:700">${w.napidij?w.napidij.toLocaleString("hu-HU")+" Ft":"—"}</div>
+              <div style="text-align:right;font-size:12px;color:var(--amber);font-weight:700">${(w.bejel+w.szochoNapi)?(w.bejel+w.szochoNapi).toLocaleString("hu-HU")+" Ft":"—"}</div>
+            </div>`).join("")}
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:6px 0 2px;border-top:2px solid var(--brd);margin-top:4px">
+            <div style="font-size:11px;font-weight:700;color:var(--t2)">Napi összeg:</div>
+            <div style="text-align:right;font-size:12px;font-weight:800;color:var(--acc)">${d.zseb.toLocaleString("hu-HU")} Ft</div>
+            <div style="text-align:right;font-size:12px;font-weight:800;color:var(--amber)">${(d.bejelentes+d.szocho).toLocaleString("hu-HU")} Ft</div>
+          </div>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+  return h;
+}
 window.exportCSV=()=>{
   const lines=["Dátum;Projekt;Munkás;Munkaóra;Tevékenységek;Felhasznált anyagok;Igényelt anyagok;Megjegyzés"];
   S.naplo.forEach(n=>(n.brigad||[]).forEach(w=>{
