@@ -1,6 +1,6 @@
 
 // Coolvarko PWA Service Worker
-const CACHE_NAME = "coolvarko-v14";
+const CACHE_NAME = "coolvarko-v15";
 const OFFLINE_ASSETS = [
   "/",
   "/index.html",
