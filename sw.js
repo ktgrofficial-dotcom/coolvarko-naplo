@@ -1,4 +1,4 @@
-const CACHE_NAME = "coolvarko-v26";
+const CACHE_NAME = "coolvarko-v27";
 const urlsToCache = ["/coolvarko-naplo/index.html"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(urlsToCache)));
