@@ -46,6 +46,7 @@ window.FB = {
   get: async (col, id) => { const d = await getDoc(doc(db, col, id)); return d.exists() ? d.data() : null; },
   watchSub: (col, id, sub, cb) => onSnapshot(collection(db, col, id, sub), s => cb(snap(s))),
   setSub: (col, id, sub, subId, data) => setDoc(doc(db, col, id, sub, subId), data),
+  getSub: async (col, id, sub, subId) => { const d = await getDoc(doc(db, col, id, sub, subId)); return d.exists() ? d.data() : null; },
 };
 // Push értesítés (Firebase Cloud Messaging) — csak akkor töltjük be, amikor kell
 let _msg=null;
@@ -132,6 +133,7 @@ svg.i{width:20px;height:20px;flex-shrink:0;stroke:currentColor;fill:none;stroke-
 .kpi .k{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--tx2);font-weight:600}
 .kpi .k svg.i{width:16px;height:16px;color:var(--acc-t)}
 .kpi.hl{}
+.lv{padding:9px 0;border-top:1px solid var(--line)}.lv:first-of-type{border-top:0}.lv>b{display:block;font-size:13.5px;font-weight:700}.lv span{display:block;font-size:13px;color:var(--tx2);margin-top:2px;line-height:1.45}
 
 /* Controls */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:46px;padding:0 18px;border-radius:14px;font-weight:700;font-size:14.5px;transition:transform .12s,opacity .15s,background .15s;white-space:nowrap}
@@ -315,7 +317,7 @@ tr.click{cursor:pointer}tr.click:hover td{background:var(--s2)}
 <script>
 "use strict";
 // ═══════════════ ALAPOK ═══════════════
-const VERZIO = "3.0.1";
+const VERZIO = "3.1.1";
 const S = {
   ready:false, user:null, view:"rogzit", online:navigator.onLine,
   naplo:[], projektek:[], munkasok:[], modositasok:[], adminPin:"1234", kulcsok:{}, kulcsEv:null,
@@ -958,6 +960,7 @@ window.mentes = async (megerositve) => {
     rogzitette:userName(), rogzitve:new Date().toISOString()};
   try{
     await iras(FB.add("naplo",doc));
+    tavolTorolMunkaMiatt(f.datum, Object.keys(f.tagok));
     const keep={datum:f.datum,projekt:f.projekt};
     S.form=freshForm(); S.form.datum=keep.datum; S.form.projekt=keep.projekt;
     toast(S.online?"Mentve":"Mentve – szinkronizál, amint lesz térerő");
@@ -1043,7 +1046,7 @@ function vSajat(){
   </div>
   <div class="grid2">
     ${pushKartya()}
-    ${m.id&&m.jelenletKovetes?`<div class="card">${jelenletNaptar(m,true)}</div>`:""}
+    ${m.id?`<div class="card" id="jelenlet">${jelenletNaptar(m,true)}</div>`:""}
     <div class="card"><div class="h2" style="margin-bottom:6px">Napjaim ebben a hónapban</div>
       ${rows.length?`<div class="list">${[...rows].sort((a,b)=>b.d.localeCompare(a.d)).map(r=>`<div class="li"><div class="av">${parseD(r.d).getDate()}</div><div class="grow"><div class="main-t">${esc(r.p)}</div><div class="sub-t">${fmtDay(r.d)}</div></div><b class="num">${r.o}h</b></div>`).join("")}</div>`:`<div class="empty">Ebben a hónapban még nincs rögzített napod</div>`}
     </div>
@@ -1071,17 +1074,18 @@ function jelenletNaptar(m,kattinthato){
     const kl=kattinthato&&!we&&!u;
     cells+=`<div class="d ${c} ${s===today()?"today":""} ${kl?"click":""}" ${kl?`onclick="jelKatt('${m.id}','${s}')"`:""} title="${esc(u||((S.jelOk||{})[m.id]||{})[s]||"")}">${d}${lab?`<small>${lab}</small>`:""}</div>`;
   }
-  const evSzab=Object.entries(j).filter(([d,v])=>v==="szabadsag"&&d.startsWith(String(y))).length, keret=Number(m.szabKeret||20);
+  const evSzab=szabadsagFelhasznalt(j,y), SK=szabadsagKeret(m,y), keret=SK?SK.keret:null;
   return `<div class="card-h"><div class="h2">Jelenlét</div><div class="row" style="gap:4px">
       <button class="btn ic g" onclick="S['${key}']=hoLep(S['${key}'],-1);render()">${ic("chevL")}</button>
       <b style="min-width:120px;text-align:center">${y}. ${HONAPOK[mo-1]}</b>
       <button class="btn ic g" onclick="S['${key}']=hoLep(S['${key}'],1);render()">${ic("chevR")}</button></div></div>
     <div class="cal">${["H","K","Sze","Cs","P","Szo","V"].map(x=>`<div class="hd">${x}</div>`).join("")}${"<div></div>".repeat(elso)}${cells}</div>
     <div class="legend"><span><i style="background:var(--acc)"></i>Dolgozott ${st.work}</span><span><i style="background:var(--blue)"></i>Szabadság ${st.szab}</span><span><i style="background:var(--amb)"></i>Beteg ${st.beteg}</span><span><i style="background:var(--red)"></i>Hiányzás ${st.hiany}</span><span><i style="background:var(--vio)"></i>Ünnep ${st.hol}</span></div>
-    <div class="hint" style="margin-top:12px">${ic("cal")}<div>Éves szabadság: <b>${evSzab}</b> / ${keret} nap felhasználva · <b>${Math.max(0,keret-evSzab)}</b> maradt${kattinthato?"<br/><span class='muted'>Koppints egy napra: szabadság → beteg → hiányzás → törlés</span>":""}</div></div>`;
+    <div class="hint" style="margin-top:12px">${ic("cal")}<div>${keret!=null?`${y}. évi szabadság: <b>${evSzab}</b> / ${keret} nap felhasználva · <b>${Math.max(0,keret-evSzab)}</b> maradt${SK.hiany.length?`<br/><span class="muted">A pontos kerethez hiányzik: ${SK.hiany.join(", ")}</span>`:""}`:`${y}-ben szabadság: <b>${evSzab}</b> nap`}${kattinthato?`<br/><span class='muted'>${isAdmin()?"Koppints egy napra: szabadság → beteg → hiányzás → törlés":"Koppints egy napra, ha nem dolgoztál, és add meg az okát"}</span>`:""}</div></div>`;
 }
 window.hoLep = (ho,d) => { let [y,m]=ho.split("-").map(Number); m+=d; if(m>12){m=1;y++;} if(m<1){m=12;y--;} return `${y}-${pad2(m)}`; };
 window.jelKatt = async (id,d) => {
+  if(!isAdmin()){ tavolNyit(d); return; }
   const cur=(S.jel[id]||{})[d], kov=cur==="szabadsag"?"beteg":cur==="beteg"?"hianyzes":cur==="hianyzes"?null:"szabadsag";
   S.jel[id]=S.jel[id]||{}; if(kov) S.jel[id][d]=kov; else delete S.jel[id][d]; render();
   FB.setSub("munkasok",id,"jelenletek",d,{statusz:kov,ok:"",ev:+d.slice(0,4),ho:+d.slice(5,7),frissitve:new Date().toISOString(),ki:userName()}).catch(e=>toast("Hiba: "+e.message,false));
@@ -1097,12 +1101,25 @@ window.tavolMent = async () => {
   try{ await iras(FB.setSub("munkasok",id,"jelenletek",d,{statusz:o[0],ok:o[0]==="hianyzes"?ok:(t.szoveg||"").trim(),ev:+d.slice(0,4),ho:+d.slice(5,7),frissitve:new Date().toISOString(),ki:userName(),dolgozoJelezte:true}));
     S.jel[id]=S.jel[id]||{}; S.jel[id][d]=o[0]; S.modal=null; toast("Rögzítve, köszönjük"); render(); }catch(e){}
 };
+// Ha valaki mégis munkát rögzít egy napra, amelyre távollétet jelölt, a távollét-jelölés magától törlődik.
+async function tavolTorolMunkaMiatt(datum, nevek){
+  for(const nev of nevek){ const m=munkas(nev); if(!m?.id) continue;
+    let st=(S.jel[m.id]||{})[datum];
+    if(st===undefined && !S.jelWatch[m.id]){ try{ const d=await FB.getSub?.("munkasok",m.id,"jelenletek",datum); st=d?.statusz; }catch(e){} }
+    if(!st) continue;
+    try{ await FB.setSub("munkasok",m.id,"jelenletek",datum,{statusz:null,ok:"",frissitve:new Date().toISOString(),ki:userName(),torolve:"munkát rögzített"});
+      if(S.jel[m.id]) delete S.jel[m.id][datum]; }catch(e){}
+  }
+  render();
+}
 window.tavolVissza = async d => { const id=S.user.id;
   try{ await iras(FB.setSub("munkasok",id,"jelenletek",d,{statusz:null,ok:"",frissitve:new Date().toISOString(),ki:userName()})); if(S.jel[id]) delete S.jel[id][d]; toast("Visszavonva"); render(); }catch(e){} };
 function tavolModal(wrap,head){
   const t=S.tavol||{datum:today(),i:-1,szoveg:""};
-  return wrap(head("Nem dolgoztam",fmtDay(t.datum))+`
+  const most=S.user?(S.jel[S.user.id]||{})[t.datum]:null, mostOk=S.user?((S.jelOk||{})[S.user.id]||{})[t.datum]:"";
+  return wrap(head("Nem dolgoztam",fmtDay(t.datum))+(most?`<div class="hint" style="margin-bottom:12px">${ic("cal")}<div style="flex:1">Most: <b>${JEL_NEV[most]||most}</b>${mostOk?` – ${esc(mostOk)}`:""}</div><button class="btn g sm" onclick="S.modal=null;tavolVissza('${t.datum}')">Törlés</button></div>`:"")+`
     <div class="sub" style="margin-bottom:12px">Válaszd ki az okát. Így aznap már nem kapsz emlékeztetőt, és az admin is látja.</div>
+    <div class="hint" style="margin-bottom:12px">${ic("info")}<div>Ha mégis dolgoztál, nyomd meg a <b>Mégse</b> gombot, és rögzítsd a munkaidőt a <b>Rögzítés</b> fülön.</div></div>
     <div class="stack" style="gap:8px">${TAVOL_OKOK.map((o,i)=>`<button class="btn ${t.i===i?"p":"s"} full" style="justify-content:flex-start" onclick="S.tavol.i=${i};render()">${t.i===i?ic("check","sm"):""} ${o[1]}</button>`).join("")}</div>
     ${t.i>=0?`<div class="fld" style="margin-top:12px"><label class="lbl">${t.i===3?"Mi az oka?":"Megjegyzés (nem kötelező)"}</label><input class="inp" value="${esc(t.szoveg)}" placeholder="${t.i===3?"pl. orvosnál voltam, családi ügy":"pl. holnap jövök"}" oninput="S.tavol.szoveg=this.value"/></div>`:""}
     <div class="modal-f"><button class="btn s" onclick="closeModal()">Mégse</button><button class="btn p" onclick="tavolMent()">${ic("check","sm")} Mentés</button></div>`);
@@ -1349,7 +1366,7 @@ function vMunkavallalok(){
         <span class="badge">Ebben a hónapban: ${ora(o)}</span>
         ${berBadge(m)}
       </div>
-      ${m.jelenletKovetes?`<button class="btn s sm" style="margin-top:12px" onclick="openModal('jelenlet',{id:'${m.id}'})">${ic("cal","sm")} Jelenlét</button>`:""}
+      <button class="btn s sm" style="margin-top:12px" onclick="openModal('jelenlet',{id:'${m.id}'})">${ic("cal","sm")} Jelenlét</button>
     </div>`; });
   return h+`</div>`;
 }
@@ -1360,15 +1377,26 @@ window.mvSzerk = i => {
     S.mEdit={...m,aktiv:m.aktiv!==false,emlekezteto:m.emlekezteto!==false,brigadTagok:(m.brigadTagok||[]).map(t=>({nev:t.nev,datum:t.datum||""})),ujPin:"",regiNev:m.nev,
       jogviszony:m.jogviszony||(isAlkalmiM(m)?"alkalmi":"bejelentett"),besorolas:bs,berKat:m.berKat||(bs==="szak"?"garber":"minber"),munkaido:Number(m.munkaido||8),
       egyeniBrutto:m.egyeniBrutto||"",szjaMentes:!!m.szjaMentes,gyerekek:Number(m.gyerekek||0),mashol:m.masholNap?.[ev]||0,ujBesorolas:!m.jogviszony,szochoKedv:m.szochoKedv||"nincs",kedvKezd:m.kedvKezd||"",k2:m.k2?{...m.k2}:null,szjaOk:m.szjaOk||(m.szjaMentes?"egyeb":"nincs"),szuletes:m.szuletes||"",valtTipus:"javitas",valtTol:today(),kilepes:m.kilepes||"",
-      evMod:m.evMod||"atalany",evAllas:m.evAllas||"fo",kh:Number(m.kh||80),evMinAlap:m.evMinAlap||"minber",evFix:m.evFix??20000,evKezi:m.evKezi||"",evKiszamlaz:m.evKiszamlaz===true}; }
-  else S.mEdit={nev:"",szakma:"",telefon:"",aktiv:true,emlekezteto:true,jogviszony:"alkalmi",besorolas:"szak",berKat:"garber",munkaido:8,egyeniBrutto:"",szjaMentes:false,gyerekek:0,mashol:0,szochoKedv:"nincs",kedvKezd:"",k2:null,evMod:"atalany",evAllas:"fo",kh:80,evMinAlap:"minber",evFix:20000,evKezi:"",evKiszamlaz:false,napidij:35000,berErvenyes:today(),jelenletKovetes:false,szabKeret:20,brigadVezeto:false,brigadPotlek:1000,brigadTagok:[],ujPin:""};
+      evMod:m.evMod||"atalany",evAllas:m.evAllas||"fo",kh:Number(m.kh||80),evMinAlap:m.evMinAlap||"minber",evFix:m.evFix??20000,evKezi:m.evKezi||"",evKiszamlaz:m.evKiszamlaz===true};
+    szerzElotolt(S.mEdit); }
+  else S.mEdit={nev:"",szakma:"",telefon:"",aktiv:true,emlekezteto:true,jogviszony:"alkalmi",besorolas:"szak",berKat:"garber",munkaido:8,egyeniBrutto:"",szjaMentes:false,gyerekek:0,mashol:0,szochoKedv:"nincs",kedvKezd:"",k2:null,evMod:"atalany",evAllas:"fo",kh:80,evMinAlap:"minber",evFix:20000,evKezi:"",evKiszamlaz:false,kitoltes:"szerzodes",feor:"",szerzBrutto:"",mvKezd:today(),belepo:false,szjaEgyeb:false,szabEgyedi:"",napidij:35000,berErvenyes:today(),jelenletKovetes:false,szabKeret:20,brigadVezeto:false,brigadPotlek:1000,brigadTagok:[],ujPin:""};
   openModal("mv");
 };
+// Meglévő bejelentett dolgozónál a jelenlegi besorolásból kitölti a szerződéses mezőket, így semmi nem változik, amíg át nem írod.
+function szerzElotolt(e){
+  const k=kulcs(today().slice(0,4),S.kulcsok), br=c=>c.berKat==="egyeni"?Number(c.egyeniBrutto)||"":Math.round((c.berKat==="garber"?k.garber:k.minber)*(Number(c.munkaido)||8)/8);
+  if(e.kitoltes) return;
+  e.kitoltes="szerzodes";
+  if(!e.szerzBrutto && e.jogviszony==="bejelentett") e.szerzBrutto=br(e);
+  if(e.k2 && !e.k2.szerzBrutto) e.k2.szerzBrutto=br(e.k2);
+  e.feor=e.feor||""; e.mvKezd=e.mvKezd||e.kedvKezd||""; e.belepo=e.belepo??(e.szochoKedv==="belepo"); e.szjaEgyeb=e.szjaEgyeb??(e.szjaOk==="egyeb"); e.szabEgyedi=e.szabEgyedi||"";
+}
 window.mvMent = async () => {
-  const e=S.mEdit, nev=(e.nev||"").trim(); if(!nev){toast("Add meg a nevet",false);return;}
+  const e=S.mEdit; szerzAlkalmaz(e); const nev=(e.nev||"").trim(); if(!nev){toast("Add meg a nevet",false);return;}
   if(S.munkasok.some(m=>m.nev===nev && m.id!==e.id)){toast("Ilyen nevű munkavállaló már van",false);return;}
   if(e.ujPin && !/^\d{4}$/.test(e.ujPin)){toast("A PIN pontosan 4 számjegy legyen",false);return;}
   if(e.regiNev && e.regiNev!==nev && !confirm("Átnevezés: a korábbi napló bejegyzésekben a régi név marad. Folytatod?"))return;
+  if(e.jogviszony==="bejelentett" && e.kitoltes==="szerzodes" && !(Number(e.szerzBrutto)>0)){toast("Add meg a munkaszerződésben szereplő havi bruttó bért",false);return;}
   if(e.jogviszony==="bejelentett" && e.berKat==="egyeni" && !(Number(e.egyeniBrutto)>0)){toast("Add meg a bejelentett bruttó bért",false);return;}
   if(e.jogviszony==="ev" && e.evMod==="kezi" && !(Number(e.evKezi)>0)){toast("Add meg a havi adó, járulék összegét",false);return;}
   const ev=today().slice(0,4);
@@ -1381,7 +1409,9 @@ window.mvMent = async () => {
     jelenletKovetes:!!e.jelenletKovetes, szabKeret:Number(e.szabKeret)||20, emlekezteto:e.emlekezteto!==false,
     brigadVezeto:!!e.brigadVezeto, brigadPotlek:e.brigadVezeto?(Number(e.brigadPotlek)||0):0,
     brigadTagok:e.brigadVezeto?(e.brigadTagok||[]).filter(t=>t.nev).map(t=>({nev:t.nev,datum:t.datum||""})):[]};
-  if(e.jogviszony==="bejelentett"){ Object.assign(data,{szjaOk:e.szjaOk||"nincs",szjaMentes:(e.szjaOk||"nincs")!=="nincs",szuletes:e.szuletes||"",szochoKedv:e.szochoKedv||"nincs",kedvKezd:e.kedvKezd||"",k2:e.k2?{berKat:e.k2.berKat||"minber",munkaido:Number(e.k2.munkaido)||4,egyeniBrutto:Number(e.k2.egyeniBrutto)||0,szochoKedv:e.k2.szochoKedv||"nincs",kedvKezd:e.k2.kedvKezd||""}:null}); }
+  if(e.jogviszony==="bejelentett"){ Object.assign(data,{szjaOk:e.szjaOk||"nincs",szjaMentes:(e.szjaOk||"nincs")!=="nincs",szuletes:e.szuletes||"",szochoKedv:e.szochoKedv||"nincs",kedvKezd:e.kedvKezd||"",k2:e.k2?{berKat:e.k2.berKat||"minber",munkaido:Number(e.k2.munkaido)||4,egyeniBrutto:Number(e.k2.egyeniBrutto)||0,szochoKedv:e.k2.szochoKedv||"nincs",kedvKezd:e.k2.kedvKezd||"",feor:e.k2.feor||"",szerzBrutto:Number(e.k2.szerzBrutto)||0}:null,
+    kitoltes:e.kitoltes||"kezi",feor:e.feor||"",szerzBrutto:Number(e.szerzBrutto)||0,mvKezd:e.mvKezd||"",belepo:!!e.belepo,szjaEgyeb:!!e.szjaEgyeb,
+    gyerek16:(e.gyerek16===undefined||e.gyerek16==="")?null:Number(e.gyerek16),szabEgyedi:Number(e.szabEgyedi)||0}); }
   data.kilepes = e.aktiv===false ? (e.kilepes||today()) : "";
   { // besorolás-történet
     const orig=e.id?S.munkasok.find(m=>m.id===e.id):null, uj=modelOf({...orig,...data});
@@ -1519,8 +1549,10 @@ function mvForm(){
     <div class="h2" style="margin-bottom:12px">Bér</div>
     ${berUrlap(e)}
     <div class="sep"></div>
-    ${sw("jelenletKovetes","Jelenléti nyilvántartás","Szabadság, betegség, hiányzás követése naptárban")}
-    ${e.jelenletKovetes?`<div class="fld" style="max-width:220px"><label class="lbl">Éves szabadságkeret (nap)</label>${inp("szabKeret","20","number",'inputmode="numeric"')}</div>`:""}
+    ${e.jogviszony==="bejelentett"?`<div class="h2" style="margin-bottom:8px">Szabadság</div>
+      <div class="sub" style="margin-bottom:10px">${today().slice(0,4)}: ${szabLeiras(szabadsagKeret({...e,jogviszony:"bejelentett"},today().slice(0,4)))}</div>
+      <div class="fld" style="max-width:260px"><label class="lbl">Egyedi éves keret (ha eltér a törvényitől)</label>${inp("szabEgyedi","üresen: törvény szerint","number",'inputmode="numeric" onchange="render()"')}</div>
+      <div class="sep"></div>`:""}
     ${sw("emlekezteto","Napi emlékeztető","Értesítést kap, ha nem rögzít, és szerepel az összesítőben. Kapcsold ki annál, aki csak néha ugrik be.")}
     ${sw("brigadVezeto","Brigádvezető","Pótlékot kap azokon a napokon, amikor a megjelölt munkavállalók vele dolgoznak")}
     ${e.brigadVezeto?`<div class="fld" style="max-width:220px"><label class="lbl">Pótlék, Ft / fő / nap</label>${inp("brigadPotlek","1000","number",'inputmode="numeric" step="100"')}</div>
@@ -1536,6 +1568,58 @@ function mvForm(){
 
 // ═══════════════ BÉRBESOROLÁS, KULCSOK, ELLENŐRZÉS ═══════════════
 const pct = x => String(x).replace(".",",")+"%";
+// ═══════════════ MUNKASZERZŐDÉSBŐL: besorolás levezetése ═══════════════
+// A könyvelő által írt munkaszerződés néhány adatából (FEOR, havi bruttó, napi munkaidő, kezdés)
+// és a személyes adatokból (születési dátum, gyermekek) az app maga állítja be a besorolást.
+function berKatFelismer(brutto, ora, evek){
+  brutto=Number(brutto)||0; ora=Number(ora)||8; if(!brutto) return null;
+  for(const ev of evek){ const k=kulcs(ev,S.kulcsok);
+    for(const [kat,alap] of [["minber",k.minber],["garber",k.garber]]){ const v=Math.round(alap*ora/8); if(Math.abs(brutto-v)<=Math.max(100,v*0.005)) return {berKat:kat,ev}; } }
+  return {berKat:"egyeni"};
+}
+function szerzLevezet(c, kezd, belepo){
+  const ev=+today().slice(0,4), evek=uniq([ev, kezd?+kezd.slice(0,4):ev, ev-1, ev-2].map(String));
+  const f=berKatFelismer(c.szerzBrutto,c.munkaido,evek), out={};
+  if(f){ out.berKat=f.berKat; out.egyeniBrutto=f.berKat==="egyeni"?Number(c.szerzBrutto):0; out._ev=f.ev||""; }
+  const feor=String(c.feor||"").trim();
+  if(belepo){ out.szochoKedv="belepo"; out.kedvKezd=kezd||c.kedvKezd||""; }
+  else if(/^\d{4}$/.test(feor)){ out.szochoKedv = feor[0]==="9" ? "szakk" : "nincs"; out.kedvKezd=""; }
+  else if(c.szochoKedv==="belepo") { out.szochoKedv="nincs"; out.kedvKezd=""; }
+  return out;
+}
+function szjaLevezet(e){
+  if(e.szjaEgyeb) return {szjaOk:"egyeb",szjaMentes:true};
+  if(e.szuletes) return huszonotHatar(e.szuletes)>="2020-01" ? {szjaOk:"25",szjaMentes:true} : {szjaOk:"nincs",szjaMentes:false};
+  return {szjaOk:"nincs",szjaMentes:false};
+}
+function szerzAlkalmaz(e){ // a szerződéses adatokból kitölti a számításhoz használt mezőket
+  if(e.jogviszony!=="bejelentett" || e.kitoltes!=="szerzodes") return;
+  Object.assign(e, szerzLevezet(e, e.mvKezd, e.belepo), szjaLevezet(e));
+  if(e.k2) Object.assign(e.k2, szerzLevezet(e.k2, e.mvKezd, e.belepo));
+  e.besorolas = e.berKat==="garber" ? "szak" : e.berKat==="minber" ? "seged" : (e.besorolas||"szak");
+}
+// ═══════════════ SZABADSÁG (Mt. 116–121. §) ═══════════════
+// 20 nap alapszabadság + életkor szerinti pótszabadság (abban az évben jár, amikor betölti) + 16 év alatti
+// gyermekek után 2/4/7 nap (fogyatékos gyermekenként +2) + 18 év alattinak 5 nap. Év közbeni belépés/kilépés: arányosan,
+// a fél napot elérő töredék egész nap. Csak bejelentett munkaviszonyban számoljuk.
+const KOR_POT=[[45,10],[43,9],[41,8],[39,7],[37,6],[35,5],[33,4],[31,3],[28,2],[25,1]];
+function szabadsagKeret(m, ev){
+  if(!m || m.jogviszony!=="bejelentett") return null;
+  ev=+ev; const r={alap:20,kor:0,eletkor:null,fiatal:0,gyerek:0,gyerekDb:0,fogy:0,egyedi:0,teljes:0,arany:1,keret:0,hiany:[]};
+  if(Number(m.szabEgyedi)>0){ r.egyedi=Number(m.szabEgyedi); r.teljes=r.egyedi; }
+  else {
+    if(m.szuletes){ const kor=ev-+m.szuletes.slice(0,4); r.eletkor=kor; r.kor=(KOR_POT.find(([a])=>kor>=a)||[0,0])[1]; if(kor<=18) r.fiatal=5; } else r.hiany.push("születési dátum");
+    const g=(m.gyerek16!==undefined&&m.gyerek16!==null&&m.gyerek16!=="")?Number(m.gyerek16):Number(m.gyerekek||0);
+    r.gyerekDb=g; r.gyerek=g>=3?7:g===2?4:g===1?2:0; r.fogy=2*(Number(m.fogyGyerek)||0);
+    r.teljes=r.alap+r.kor+r.fiatal+r.gyerek+r.fogy;
+  }
+  const e0=`${ev}-01-01`, e1=`${ev}-12-31`, kezd=m.mvKezd||"", veg=m.kilepes||"";
+  const t0=kezd>e0?kezd:e0, t1=(veg&&veg<e1)?veg:e1;
+  if(t1<t0) r.arany=0; else r.arany=((parseD(t1)-parseD(t0))/864e5+1)/((parseD(e1)-parseD(e0))/864e5+1);
+  r.keret = r.arany>=1 ? r.teljes : Math.round(r.teljes*r.arany);
+  return r;
+}
+function szabadsagFelhasznalt(jel, ev){ return Object.entries(jel||{}).filter(([d,v])=>v==="szabadsag"&&d.startsWith(String(ev))&&![0,6].includes(parseD(d).getDay())&&!unnep(d)).length; }
 const KEDV_OPTS=[["nincs","Nincs"],["szakk","Szakképzettséget nem igénylő munkakör (50%)"],["belepo","Munkaerőpiacra lépő (1 év 100%, utána 6 hónap 50%)"]];
 function szerzUrlap(path,c,cim){
   const segB=(key,opts)=>`<div class="seg" style="margin-bottom:12px">${opts.map(([v,l])=>`<button class="${String(c[key])===String(v)?"on":""}" onclick="${path}.${key}='${v}';render()">${l}</button>`).join("")}</div>`;
@@ -1546,25 +1630,49 @@ function szerzUrlap(path,c,cim){
       <div class="fld"><label class="lbl">Szocho-kedvezmény</label><select class="inp" onchange="${path}.szochoKedv=this.value;render()">${KEDV_OPTS.map(([v,l])=>`<option value="${v}" ${(c.szochoKedv||"nincs")===v?"selected":""}>${l}</option>`).join("")}</select></div></div>
     ${c.szochoKedv==="belepo"?`<div class="fld" style="max-width:260px"><label class="lbl">A munkaviszony kezdete</label><input class="inp" type="date" value="${esc(c.kedvKezd||"")}" onchange="${path}.kedvKezd=this.value;render()"/></div>`:""}`;
 }
-function berUrlap(e){
+// A munkaszerződés adatai → az app maga sorolja be
+function szerzodesUrlap(e){
   const ev=today().slice(0,4), k=kulcs(ev,S.kulcsok);
-  const seg=(key,opts,extra="")=>`<div class="seg" style="margin-bottom:12px">${opts.map(([v,l])=>`<button class="${String(e[key])===String(v)?"on":""}" onclick="S.mEdit.${key}=${typeof v==="number"?v:`'${v}'`};${extra}render()">${l}</button>`).join("")}</div>`;
-  let h=`${e.ujBesorolas&&e.id?`<div class="hint warn" style="margin-bottom:12px">${ic("alert")}<div>Ennél a munkavállalónál még a régi, kézzel beírt bejelentési összegek vannak. Állítsd be a besorolást – mentés után az app a hivatalos kulcsokkal számol, a korábbi napokra is.</div></div>`:""}
-    <label class="lbl">Jogviszony</label>${seg("jogviszony",[["alkalmi","Alkalmi"],["bejelentett","Bejelentett"],["ev","Egyéni váll."]])}
-    <label class="lbl">Besorolás</label>${seg("besorolas",[["szak","Szakmunkás"],["seged","Segédmunkás"]],"if(S.mEdit.berKat!=='egyeni')S.mEdit.berKat=(S.mEdit.besorolas==='szak'?'garber':'minber');")}
-    <div class="fld" style="max-width:320px"><label class="lbl">Napi nettó (kézhez), Ft</label><input class="inp" type="number" inputmode="numeric" step="500" value="${esc(e.napidij??"")}" oninput="S.mEdit.napidij=this.value" onchange="render()"/></div>`;
-  if(e.jogviszony==="bejelentett"){
-    h+=szerzUrlap("S.mEdit",e,e.k2?"1. munkaszerződés":"");
-    h+=`<div class="tgl"><div><div style="font-weight:700;font-size:14.5px">Két munkaszerződése van</div><div class="sub" style="font-size:12.5px;margin-top:2px">Pl. 4 óra szakmunkás + 4 óra segédmunkás munkakörben</div></div><button class="switch ${e.k2?"on":""}" onclick="S.mEdit.k2=S.mEdit.k2?null:{berKat:'minber',munkaido:4,egyeniBrutto:'',szochoKedv:'nincs',kedvKezd:''};render()"></button></div>`;
-    if(e.k2) h+=szerzUrlap("S.mEdit.k2",e.k2,"2. munkaszerződés");
-    const hat=huszonotHatar(e.szuletes);
-    h+=`<label class="lbl" style="margin-top:6px">SZJA-mentesség</label>
-      <div class="seg" style="margin-bottom:10px">${[["nincs","Nincs"],["25","25 év alatti"],["egyeb","Egyéb (anyák stb.)"]].map(([v,l])=>`<button class="${(e.szjaOk||"nincs")===v?"on":""}" onclick="S.mEdit.szjaOk='${v}';S.mEdit.szjaMentes=${v!=="nincs"};render()">${l}</button>`).join("")}</div>
-      ${e.szjaOk==="25"?`<div class="r2"><div class="fld"><label class="lbl">Születési dátum</label><input class="inp" type="date" value="${esc(e.szuletes||"")}" onchange="S.mEdit.szuletes=this.value;render()"/></div>
-        <div class="fld"><label class="lbl">Mentes eddig</label><div class="inp" style="display:flex;align-items:center;background:transparent">${hat?`${hat.slice(0,4)}. ${HONAPOK[+hat.slice(5)-1]} végéig`:"<span class='muted'>add meg a dátumot</span>"}</div></div></div>
-        ${!e.szuletes?`<div class="hint warn" style="margin-bottom:10px">${ic("alert")}<div>Születési dátum nélkül az app nem tudja, meddig jár a mentesség, és addig mentesnek veszi.</div></div>`:""}`:""}
-      <div class="tgl"><div><div style="font-weight:700;font-size:14.5px">Családi kedvezmény</div><div class="sub" style="font-size:12.5px;margin-top:2px">Eltartott gyermekek száma, akik után érvényesíti</div></div>
-        <div class="step"><button onclick="S.mEdit.gyerekek=Math.max(0,(+S.mEdit.gyerekek||0)-1);render()">${ic("minus","sm")}</button><div class="v num">${Number(e.gyerekek)||0}</div><button onclick="S.mEdit.gyerekek=Math.min(9,(+S.mEdit.gyerekek||0)+1);render()">${ic("plus","sm")}</button></div></div>`;
+  const ora=(path,c)=>`<select class="inp" onchange="${path}.munkaido=+this.value;render()">${[8,7,6,5,4,3,2,1].map(o=>`<option value="${o}" ${Number(c.munkaido||8)===o?"selected":""}>${o} óra</option>`).join("")}</select>`;
+  const mezo=(path,c)=>`<div class="r2">
+      <div class="fld"><label class="lbl">Munkakör FEOR-száma</label><input class="inp" inputmode="numeric" maxlength="4" value="${esc(c.feor||"")}" placeholder="pl. 7511 vagy 9310" oninput="${path}.feor=this.value.replace(/\\D/g,'');" onchange="render()"/></div>
+      <div class="fld"><label class="lbl">Havi bruttó alapbér, Ft</label><input class="inp" type="number" inputmode="numeric" step="100" value="${esc(c.szerzBrutto||"")}" placeholder="a szerződés szerint" oninput="${path}.szerzBrutto=this.value" onchange="render()"/></div></div>
+    <div class="r2"><div class="fld"><label class="lbl">Napi munkaidő</label>${ora(path,c)}</div>${path==="S.mEdit"?`<div class="fld"><label class="lbl">Munkaviszony kezdete</label><input class="inp" type="date" value="${esc(e.mvKezd||"")}" onchange="S.mEdit.mvKezd=this.value;render()"/></div>`:"<div></div>"}</div>`;
+  const leir=c=>{ const kat=c.berKat, v=Math.round((kat==="garber"?k.garber:k.minber)*(Number(c.munkaido)||8)/8);
+    const nev=kat==="egyeni"?`Egyéni bér: ${ft(c.egyeniBrutto)}/hó`:`${kat==="garber"?"Garantált bérminimum":"Minimálbér"}, ${c.munkaido} óra – ${ev}-ben ${ft(v)}/hó`;
+    const regi=c._ev&&c._ev!==ev?` <span class="muted">(a szerződés a ${c._ev}-es összeget írja; az app mindig az aktuális évvel számol)</span>`:"";
+    const feor=String(c.feor||""), fh=!feor?`<span class="muted">FEOR nélkül a szocho-kedvezményt nem tudom eldönteni</span>`:!/^\d{4}$/.test(feor)?`<span style="color:var(--amb)">A FEOR-szám 4 számjegy</span>`:"";
+    const kd={szakk:"50% (szakképzettséget nem igénylő munkakör, FEOR 9…)",belepo:"munkaerőpiacra lépő (1 év 100%, utána 6 hónap 50%)",nincs:"nincs"}[c.szochoKedv||"nincs"];
+    const kev=kat==="egyeni"&&Number(c.egyeniBrutto)<Math.round(k.minber*(Number(c.munkaido)||8)/8)?`<br/><span style="color:var(--red)">Kevesebb, mint a ${ev}-es minimálbér ${c.munkaido} órára (${ft(Math.round(k.minber*(Number(c.munkaido)||8)/8))}) – ellenőrizd a szerződést.</span>`:"";
+    return `<div class="lv"><b>Bér</b><span>${nev}${regi}${kev}</span></div><div class="lv"><b>Szocho-kedvezmény</b><span>${kd}${fh?" · "+fh:""}</span></div>`; };
+  const hat=huszonotHatar(e.szuletes), SK=szabadsagKeret({...e,jogviszony:"bejelentett"},ev);
+  const szja = e.szjaOk==="egyeb"?"mentes (egyéb jogcím)" : e.szjaOk==="25" ? (hat>=thisMonth()?`25 év alatti – mentes ${hat.slice(0,4)}. ${HONAPOK[+hat.slice(5)-1]} végéig`:`25 év felett – SZJA-köteles (${hat.slice(0,4)}. ${HONAPOK[+hat.slice(5)-1]} óta)`) : e.szuletes?"SZJA-köteles":"<span class='muted'>add meg a születési dátumot</span>";
+  const step=(k2,v,max=9)=>`<div class="step"><button onclick="S.mEdit.${k2}=Math.max(0,${v}-1);render()">${ic("minus","sm")}</button><div class="v num">${v}</div><button onclick="S.mEdit.${k2}=Math.min(${max},${v}+1);render()">${ic("plus","sm")}</button></div>`;
+  const tg=(k2,t,sub)=>`<div class="tgl"><div><div style="font-weight:700;font-size:14.5px">${t}</div>${sub?`<div class="sub" style="font-size:12.5px;margin-top:2px">${sub}</div>`:""}</div><button class="switch ${e[k2]?"on":""}" onclick="S.mEdit.${k2}=!S.mEdit.${k2};render()"></button></div>`;
+  return `<div class="sub" style="margin:-4px 0 12px">Írd be a könyvelő által készített munkaszerződésből. A besorolást az app ebből állapítja meg.</div>
+    ${e.k2?`<div class="h2" style="font-size:15px;margin:6px 0 10px">1. munkaszerződés</div>`:""}${mezo("S.mEdit",e)}
+    <div class="tgl"><div><div style="font-weight:700;font-size:14.5px">Két munkaszerződése van</div><div class="sub" style="font-size:12.5px;margin-top:2px">Pl. 4 óra szakmunkás + 4 óra segédmunkás munkakörben</div></div><button class="switch ${e.k2?"on":""}" onclick="S.mEdit.k2=S.mEdit.k2?null:{munkaido:4,feor:'',szerzBrutto:'',berKat:'minber',egyeniBrutto:'',szochoKedv:'nincs',kedvKezd:''};render()"></button></div>
+    ${e.k2?`<div class="h2" style="font-size:15px;margin:6px 0 10px">2. munkaszerződés</div>${mezo("S.mEdit.k2",e.k2)}`:""}
+    <div class="h2" style="font-size:15px;margin:12px 0 10px">Személyes adatok</div>
+    <div class="r2"><div class="fld"><label class="lbl">Születési dátum</label><input class="inp" type="date" value="${esc(e.szuletes||"")}" onchange="S.mEdit.szuletes=this.value;render()"/></div><div></div></div>
+    <div class="tgl"><div><div style="font-weight:700;font-size:14.5px">Gyermekek (családi kedvezmény)</div><div class="sub" style="font-size:12.5px;margin-top:2px">Akik után a családi kedvezményt érvényesíti</div></div>${step("gyerekek",Number(e.gyerekek)||0)}</div>
+    <div class="tgl"><div><div style="font-weight:700;font-size:14.5px">Ebből 16 év alatti</div><div class="sub" style="font-size:12.5px;margin-top:2px">Pótszabadsághoz</div></div>${step("gyerek16",(e.gyerek16===undefined||e.gyerek16===null||e.gyerek16==="")?(Number(e.gyerekek)||0):Number(e.gyerek16))}</div>
+    ${tg("belepo","Munkaerőpiacra lépő","Ha a könyvelő jelezte (pl. 6 hónapja nem dolgozott). A kezdéstől 1 évig 100%, utána 6 hónapig 50% szocho-kedvezmény.")}
+    ${tg("szjaEgyeb","Egyéb SZJA-mentesség","Pl. négy vagy több gyermeket nevelő anya, 30 év alatti anya – ha a könyvelő érvényesíti")}
+    <div class="card" style="background:var(--s2);box-shadow:none;margin-top:10px"><div class="h2" style="font-size:15px;margin-bottom:4px">Az app így sorolta be</div>
+      ${leir(e)}${e.k2?leir(e.k2).replace("<b>Bér</b>","<b>2. szerződés – bér</b>").replace("<b>Szocho-kedvezmény</b>","<b>2. szerződés – szocho-kedvezmény</b>"):""}
+      <div class="lv"><b>SZJA</b><span>${szja}</span></div>
+      <div class="lv"><b>Családi kedvezmény</b><span>${Number(e.gyerekek)?`${e.gyerekek} gyermek után`:"nincs"}</span></div>
+      <div class="lv"><b>Szabadság ${ev}-ben</b><span>${szabLeiras(SK)}</span></div></div>`;
+}
+function szabLeiras(SK){
+  if(!SK) return "";
+  if(SK.egyedi) return `<b>${SK.keret} nap</b> (egyedi keret${SK.arany<1?`, ${SK.teljes} nap időarányosan`:""})`;
+  const r=[`20 alap`]; if(SK.kor) r.push(`${SK.kor} életkor (${SK.eletkor} év)`); if(SK.fiatal) r.push(`5 fiatal munkavállaló`); if(SK.gyerek) r.push(`${SK.gyerek} gyermek után (${SK.gyerekDb} db)`); if(SK.fogy) r.push(`${SK.fogy} fogyatékos gyermek`);
+  return `<b>${SK.keret} nap</b> = ${r.join(" + ")}${SK.arany<1?` → időarányosan ${SK.keret} a ${SK.teljes}-ből`:""}${SK.hiany.length?` · <span style="color:var(--amb)">hiányzik: ${SK.hiany.join(", ")}</span>`:""}`;
+}
+function haviTablaBej(e){
+  const ev=today().slice(0,4), k=kulcs(ev,S.kulcsok); let h="";
     const H=bejelentettHavi(modelOf({...e,jogviszony:"bejelentett"}),ev,S.kulcsok,thisMonth(),1);
     const mn=munkanapok(thisMonth());
     h+=`<div class="card" style="background:var(--s2);box-shadow:none;margin-top:6px"><div class="h2" style="font-size:15px;margin-bottom:6px">Havi adók, járulékok – ${ev}. ${HONAPOK[+thisMonth().slice(5)-1]}</div>
@@ -1578,6 +1686,32 @@ function berUrlap(e){
         ${H.min30?`<tr><td>Minimálbér 30%-a alatti alap miatt<div class="m">munkáltatói TB + szocho a különbözet után</div></td><td>${ft(H.min30)}</td></tr>`:""}
         <tr class="t"><td>Havi összesen</td><td>${ft(H.ossz)}</td></tr>
       </table><div class="sub" style="font-size:12px;margin-top:6px">≈ ${ft(H.ossz/mn)} munkanaponként ebben a hónapban (${mn} munkanap). Ezt fizeti a cég a napi nettón felül.</div></div>`;
+  return h;
+}
+function berUrlap(e){
+  const ev=today().slice(0,4), k=kulcs(ev,S.kulcsok);
+  const seg=(key,opts,extra="")=>`<div class="seg" style="margin-bottom:12px">${opts.map(([v,l])=>`<button class="${String(e[key])===String(v)?"on":""}" onclick="S.mEdit.${key}=${typeof v==="number"?v:`'${v}'`};${extra}render()">${l}</button>`).join("")}</div>`;
+  let h=`${e.ujBesorolas&&e.id?`<div class="hint warn" style="margin-bottom:12px">${ic("alert")}<div>Ennél a munkavállalónál még a régi, kézzel beírt bejelentési összegek vannak. Állítsd be a besorolást – mentés után az app a hivatalos kulcsokkal számol, a korábbi napokra is.</div></div>`:""}
+    <label class="lbl">Jogviszony</label>${seg("jogviszony",[["alkalmi","Alkalmi"],["bejelentett","Bejelentett"],["ev","Egyéni váll."]])}
+    ${e.jogviszony==="bejelentett"?"":`<label class="lbl">Besorolás</label>${seg("besorolas",[["szak","Szakmunkás"],["seged","Segédmunkás"]],"if(S.mEdit.berKat!=='egyeni')S.mEdit.berKat=(S.mEdit.besorolas==='szak'?'garber':'minber');")}`}
+    <div class="fld" style="max-width:320px"><label class="lbl">Napi nettó (kézhez), Ft</label><input class="inp" type="number" inputmode="numeric" step="500" value="${esc(e.napidij??"")}" oninput="S.mEdit.napidij=this.value" onchange="render()"/></div>`;
+  if(e.jogviszony==="bejelentett"){ if(!e.kitoltes) szerzElotolt(e); szerzAlkalmaz(e); }
+  if(e.jogviszony==="bejelentett" && e.kitoltes==="szerzodes"){
+    h+=`<label class="lbl">Kitöltés</label>${seg("kitoltes",[["szerzodes","A munkaszerződésből"],["kezi","Kézi beállítás"]])}`+szerzodesUrlap(e)+haviTablaBej(e);
+  } else if(e.jogviszony==="bejelentett"){
+    h+=`<label class="lbl">Kitöltés</label>${seg("kitoltes",[["szerzodes","A munkaszerződésből"],["kezi","Kézi beállítás"]])}`;
+    h+=szerzUrlap("S.mEdit",e,e.k2?"1. munkaszerződés":"");
+    h+=`<div class="tgl"><div><div style="font-weight:700;font-size:14.5px">Két munkaszerződése van</div><div class="sub" style="font-size:12.5px;margin-top:2px">Pl. 4 óra szakmunkás + 4 óra segédmunkás munkakörben</div></div><button class="switch ${e.k2?"on":""}" onclick="S.mEdit.k2=S.mEdit.k2?null:{berKat:'minber',munkaido:4,egyeniBrutto:'',szochoKedv:'nincs',kedvKezd:''};render()"></button></div>`;
+    if(e.k2) h+=szerzUrlap("S.mEdit.k2",e.k2,"2. munkaszerződés");
+    const hat=huszonotHatar(e.szuletes);
+    h+=`<label class="lbl" style="margin-top:6px">SZJA-mentesség</label>
+      <div class="seg" style="margin-bottom:10px">${[["nincs","Nincs"],["25","25 év alatti"],["egyeb","Egyéb (anyák stb.)"]].map(([v,l])=>`<button class="${(e.szjaOk||"nincs")===v?"on":""}" onclick="S.mEdit.szjaOk='${v}';S.mEdit.szjaMentes=${v!=="nincs"};render()">${l}</button>`).join("")}</div>
+      ${e.szjaOk==="25"?`<div class="r2"><div class="fld"><label class="lbl">Születési dátum</label><input class="inp" type="date" value="${esc(e.szuletes||"")}" onchange="S.mEdit.szuletes=this.value;render()"/></div>
+        <div class="fld"><label class="lbl">Mentes eddig</label><div class="inp" style="display:flex;align-items:center;background:transparent">${hat?`${hat.slice(0,4)}. ${HONAPOK[+hat.slice(5)-1]} végéig`:"<span class='muted'>add meg a dátumot</span>"}</div></div></div>
+        ${!e.szuletes?`<div class="hint warn" style="margin-bottom:10px">${ic("alert")}<div>Születési dátum nélkül az app nem tudja, meddig jár a mentesség, és addig mentesnek veszi.</div></div>`:""}`:""}
+      <div class="tgl"><div><div style="font-weight:700;font-size:14.5px">Családi kedvezmény</div><div class="sub" style="font-size:12.5px;margin-top:2px">Eltartott gyermekek száma, akik után érvényesíti</div></div>
+        <div class="step"><button onclick="S.mEdit.gyerekek=Math.max(0,(+S.mEdit.gyerekek||0)-1);render()">${ic("minus","sm")}</button><div class="v num">${Number(e.gyerekek)||0}</div><button onclick="S.mEdit.gyerekek=Math.min(9,(+S.mEdit.gyerekek||0)+1);render()">${ic("plus","sm")}</button></div></div>`;
+    h+=haviTablaBej(e);
   } else if(e.jogviszony==="ev"){
     h+=`<label class="lbl">Adózás</label>${seg("evMod",[["atalany","Átalányadó"],["kezi","Egyéb – havi összeg"]])}`;
     if(e.evMod==="kezi"){
@@ -1856,7 +1990,7 @@ function autoLogin(){
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(()=>{});
   navigator.serviceWorker.addEventListener("message",e=>{ if(e.data?.tavol) tavolKer(); }); }
 // Értesítésből nyitva (?tavol=1): belépés után felajánljuk a távollét megadását
-function tavolKer(){ if(S.user && !isAdmin()){ S.view="rogzit"; S.form=null; render(); if(!(S.jel[S.user.id]||{})[today()]) tavolNyit(today()); } else S._tavolKer=true; }
+function tavolKer(){ if(S.user && !isAdmin()){ jelWatch(S.user.id); S.view="sajat"; render(); setTimeout(()=>{ document.getElementById("jelenlet")?.scrollIntoView({block:"start"}); if(!(S.jel[S.user.id]||{})[today()]) tavolNyit(today()); },300); } else S._tavolKer=true; }
 if(new URLSearchParams(location.search).get("tavol")){ S._tavolKer=true; history.replaceState(null,"",location.pathname); }
 setInterval(()=>{ if(S._tavolKer && S.user && !isAdmin()){ S._tavolKer=false; setTimeout(tavolKer,600); } },700);
 </script>
