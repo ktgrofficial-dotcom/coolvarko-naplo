@@ -2,13 +2,13 @@ name: Napi emlékeztető
 
 on:
   schedule:
-    # Óránként 13:07–20:07 UTC között (télen 14–21, nyáron 15–22 budapesti idő).
-    # A szkript maga dönti el, hogy elérkezett-e a beállított időpont, és naponta csak egyszer küld.
-    - cron: "7 13-20 * * 1-6"
+    # Óránként 13:07–21:07 UTC között (télen 14–22, nyáron 15–23 budapesti idő).
+    # A szkript maga dönti el, hogy elérkezett-e a beállított időpont, és naponta legfeljebb 3× küld (óránként).
+    - cron: "7 13-21 * * 1-6"
   workflow_dispatch:
     inputs:
       mod:
-        description: "proba = próbaüzenet mindenkinek · most = kiküldés azonnal · normal = mint ütemezve"
+        description: "proba = próbaüzenet mindenkinek · most = utolsó emlékeztető azonnal (teszt) · normal = mint ütemezve"
         required: true
         default: "proba"
         type: choice
