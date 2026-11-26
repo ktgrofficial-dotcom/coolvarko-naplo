@@ -315,7 +315,7 @@ tr.click{cursor:pointer}tr.click:hover td{background:var(--s2)}
 <script>
 "use strict";
 // ═══════════════ ALAPOK ═══════════════
-const VERZIO = "2.9.3";
+const VERZIO = "3.0";
 const S = {
   ready:false, user:null, view:"rogzit", online:navigator.onLine,
   naplo:[], projektek:[], munkasok:[], modositasok:[], adminPin:"1234", kulcsok:{}, kulcsEv:null,
@@ -738,7 +738,7 @@ function startAdminWatch(){ if(isAdmin() && !_modWatch){ _modWatch=FB.watch("mod
 // A telefon egyszer feliratkozik (token a "pushTokenek" gyűjteménybe kerül).
 // A kiküldést a GitHub Actions ütemezett feladata végzi (push/emlekezteto.mjs):
 // a beállított időpont után azoknak küld, akik aznap még nem szerepelnek a naplóban.
-const PUSH_ALAP = {be:true, ora:17, szombat:false, adminOsszesito:true, vapid:""};
+const PUSH_ALAP = {be:true, ora:17, ismetles:3, szombat:false, adminOsszesito:true, vapid:""};
 const pushCfg = () => ({...PUSH_ALAP, ...(S.push||{})});
 const pushTokenHelyi = () => ls.get("ck_push",null); // {token, kie}
 const pushKie = () => isAdmin() ? "admin" : (S.user?.id||"");
@@ -828,13 +828,16 @@ function pushAdminKartya(){
   const dolg=uniq(tok.filter(t=>t.szerep==="worker").map(t=>S.munkasok.find(m=>m.id===t.mvId)?.nev||t.nev)).sort((a,b)=>a.localeCompare(b,"hu"));
   const aktivok=S.munkasok.filter(m=>m.aktiv!==false).map(m=>m.nev), nincs=aktivok.filter(n=>!dolg.includes(n)).sort((a,b)=>a.localeCompare(b,"hu"));
   const sw=(k,t,sub)=>`<div class="tgl"><div><div style="font-weight:700;font-size:14.5px">${t}</div>${sub?`<div class="sub" style="font-size:12.5px;margin-top:2px">${sub}</div>`:""}</div><button class="switch ${c[k]?"on":""}" onclick="pushBeallit('${k}',${!c[k]})"></button></div>`;
-  const ut=c.utolso?`Utoljára kiküldve: <b>${fmtDate(c.utolso)}</b>${c.utolsoEredmeny?` · ${esc(c.utolsoEredmeny)}`:""}`:"Még nem futott a kiküldés.";
-  return `<div class="card"><div class="h2" style="margin-bottom:4px">Automatikus emlékeztető</div><div class="sub" style="margin-bottom:12px">Munkanapokon a megadott időpont után értesítést kap, aki aznap még nem szerepel a naplóban. Szabadságon, betegen és ünnepnapon nem küld.</div>
+  const ut=c.kuldesNap?`Utoljára: <b>${fmtDate(c.kuldesNap)}</b>, ${c.kuldesKor||1}. emlékeztető${c.utolsoEredmeny?` · ${esc(c.utolsoEredmeny)}`:""}`:c.utolso?`Utoljára kiküldve: <b>${fmtDate(c.utolso)}</b>${c.utolsoEredmeny?` · ${esc(c.utolsoEredmeny)}`:""}`:"Még nem futott a kiküldés.";
+  return `<div class="card"><div class="h2" style="margin-bottom:4px">Automatikus emlékeztető</div><div class="sub" style="margin-bottom:12px">Munkanapokon a megadott időponttól óránként szól annak, aki aznap még nem szerepel a naplóban. Az utolsó üzenet arra kéri, hogy ha nem dolgozott, írja be a távollét okát. Szabadságon, betegen, ha jelezte a távollétet, és ünnepnapon nem küld.</div>
     ${sw("be","Emlékeztető küldése","")}
     <div style="margin:12px 0 6px;font-weight:700;font-size:14px">Mikor szóljon?</div>
     <div class="seg" style="display:grid;grid-template-columns:repeat(3,1fr)">${[15,16,17,18,19,20].map(h=>`<button class="${c.ora===h?"on":""}" onclick="pushBeallit('ora',${h})">${h}:00</button>`).join("")}</div>
+    <div style="margin:12px 0 6px;font-weight:700;font-size:14px">Hányszor szóljon?</div>
+    <div class="seg">${[1,2,3].map(n=>`<button class="${(c.ismetles||3)===n?"on":""}" onclick="pushBeallit('ismetles',${n})">${n===1?"Egyszer":n+"× óránként"}</button>`).join("")}</div>
+    <div class="sub" style="font-size:12.5px;margin-top:6px">${(c.ismetles||3)>1?`${c.ora}:00-tól ${c.ora+(c.ismetles||3)-1}:00-ig óránként, legfeljebb ${c.ismetles||3}×`:`${c.ora}:00 után egyszer`}</div>
     ${sw("szombat","Szombaton is","Ha szombaton is szokott munka lenni")}
-    ${sw("adminOsszesito","Összesítő nekem","Lista arról, ki nem rögzített még (a te eszközödre)")}
+    ${sw("adminOsszesito","Összesítő nekem","Az utolsó emlékeztető után: ki nem rögzített, és ki jelezte, hogy nem dolgozott")}
     <div class="hint" style="margin-top:12px">${ic("bell")}<div>${ut}<br/>Kéri (${dolg.length}): ${dolg.length?esc(dolg.join(", ")):"még senki"}${nincs.length?`<br/><span class="muted">Még nem kapcsolta be: ${esc(nincs.join(", "))}</span>`:""}</div></div>
     <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;font-size:14px">Webes push kulcs ${c.vapid?"<span class='muted'>(megadva)</span>":"<span style='color:var(--amb)'>(hiányzik)</span>"}</summary>
       <div class="sub" style="margin:8px 0">Firebase konzol → Projekt beállításai → Cloud Messaging → Webes konfiguráció → Web Push tanúsítványok → „Kulcspár” (a hosszú nyilvános kulcs).</div>
@@ -896,7 +899,7 @@ function vRogzit(){
   const mar=S.naplo.filter(n=>n.datum===f.datum && n.projekt===f.projekt);
   if(S.pushAll===null && S.user?.role==="worker") pushAllapotFrissit();
   return `<div class="ph"><div><div class="h1">Napi rögzítés</div><div class="sub">${fmtDay(f.datum)}</div></div></div>
-  ${S.user?.role==="worker"?pushSav():""}
+  ${S.user?.role==="worker"?pushSav()+tavolSav(f.datum):""}
   <div class="grid2 wide-r">
     <div class="stack">
       <div class="card">
@@ -907,6 +910,7 @@ function vRogzit(){
           <button class="${f.datum!==t&&f.datum!==y?"on":""}" onclick="document.getElementById('fd').showPicker?.();document.getElementById('fd').focus()">Másik nap</button>
         </div>
         <input id="fd" type="date" class="inp" value="${f.datum}" max="${t}" onchange="if(this.value){S.form.datum=this.value;render()}"/>
+        ${S.user?.role==="worker"&&!(S.jel[S.user.id]||{})[f.datum]?`<button class="btn g full" style="margin-top:10px;color:var(--tx2)" onclick="tavolNyit(S.form.datum)">${ic("cal","sm")} Ezen a napon nem dolgoztam</button>`:""}
       </div>
       <div class="card">
         <div class="h2" style="margin-bottom:12px">Melyik munkán?</div>
@@ -1045,7 +1049,7 @@ function vSajat(){
 }
 
 // ═══════════════ JELENLÉT NAPTÁR ═══════════════
-function jelWatch(id){ if(S.jelWatch[id])return; S.jelWatch[id]=true; S.jel[id]=S.jel[id]||{}; FB.watchSub("munkasok",id,"jelenletek",d=>{const o={};d.forEach(x=>{if(x.statusz)o[x.id]=x.statusz;});S.jel[id]=o;render();}); }
+function jelWatch(id){ if(S.jelWatch[id])return; S.jelWatch[id]=true; S.jel[id]=S.jel[id]||{}; FB.watchSub("munkasok",id,"jelenletek",d=>{const o={},ok={};d.forEach(x=>{if(x.statusz){o[x.id]=x.statusz; if(x.ok)ok[x.id]=x.ok;}});S.jel[id]=o;S.jelOk=S.jelOk||{};S.jelOk[id]=ok;render();}); }
 function jelenletNaptar(m,kattinthato){
   jelWatch(m.id);
   const key="jel_"+m.id; if(!S[key]) S[key]=thisMonth();
@@ -1063,7 +1067,7 @@ function jelenletNaptar(m,kattinthato){
     else if(dolg[s]){c="work";lab=dolg[s]+"h";st.work++;st.o+=dolg[s];}
     else if(we)c="we";
     const kl=kattinthato&&!we&&!u;
-    cells+=`<div class="d ${c} ${s===today()?"today":""} ${kl?"click":""}" ${kl?`onclick="jelKatt('${m.id}','${s}')"`:""} title="${esc(u||"")}">${d}${lab?`<small>${lab}</small>`:""}</div>`;
+    cells+=`<div class="d ${c} ${s===today()?"today":""} ${kl?"click":""}" ${kl?`onclick="jelKatt('${m.id}','${s}')"`:""} title="${esc(u||((S.jelOk||{})[m.id]||{})[s]||"")}">${d}${lab?`<small>${lab}</small>`:""}</div>`;
   }
   const evSzab=Object.entries(j).filter(([d,v])=>v==="szabadsag"&&d.startsWith(String(y))).length, keret=Number(m.szabKeret||20);
   return `<div class="card-h"><div class="h2">Jelenlét</div><div class="row" style="gap:4px">
@@ -1078,8 +1082,35 @@ window.hoLep = (ho,d) => { let [y,m]=ho.split("-").map(Number); m+=d; if(m>12){m
 window.jelKatt = async (id,d) => {
   const cur=(S.jel[id]||{})[d], kov=cur==="szabadsag"?"beteg":cur==="beteg"?"hianyzes":cur==="hianyzes"?null:"szabadsag";
   S.jel[id]=S.jel[id]||{}; if(kov) S.jel[id][d]=kov; else delete S.jel[id][d]; render();
-  FB.setSub("munkasok",id,"jelenletek",d,{statusz:kov,ev:+d.slice(0,4),ho:+d.slice(5,7),frissitve:new Date().toISOString(),ki:userName()}).catch(e=>toast("Hiba: "+e.message,false));
+  FB.setSub("munkasok",id,"jelenletek",d,{statusz:kov,ok:"",ev:+d.slice(0,4),ho:+d.slice(5,7),frissitve:new Date().toISOString(),ki:userName()}).catch(e=>toast("Hiba: "+e.message,false));
 };
+// ═══════════════ TÁVOLLÉT BEJELENTÉSE (dolgozó: „Ma nem dolgoztam”) ═══════════════
+const TAVOL_OKOK=[["szabadsag","Szabadság",""],["beteg","Betegség",""],["hianyzes","Nem volt munka","Nem volt munka"],["hianyzes","Egyéb ok",""]];
+const JEL_NEV={szabadsag:"Szabadság",beteg:"Betegség",hianyzes:"Távol"};
+window.tavolNyit = d => { if(!S.user||isAdmin())return; jelWatch(S.user.id); S.tavol={datum:d||S.form?.datum||today(),i:-1,szoveg:""}; openModal("tavol",{}); };
+window.tavolMent = async () => {
+  const t=S.tavol, o=TAVOL_OKOK[t.i]; if(!o){toast("Válaszd ki, miért nem dolgoztál",false);return;}
+  const ok=(o[2]||t.szoveg||"").trim(); if(t.i===3&&!ok){toast("Írd le röviden az okát",false);return;}
+  const id=S.user.id, d=t.datum;
+  try{ await iras(FB.setSub("munkasok",id,"jelenletek",d,{statusz:o[0],ok:o[0]==="hianyzes"?ok:(t.szoveg||"").trim(),ev:+d.slice(0,4),ho:+d.slice(5,7),frissitve:new Date().toISOString(),ki:userName(),dolgozoJelezte:true}));
+    S.jel[id]=S.jel[id]||{}; S.jel[id][d]=o[0]; S.modal=null; toast("Rögzítve, köszönjük"); render(); }catch(e){}
+};
+window.tavolVissza = async d => { const id=S.user.id;
+  try{ await iras(FB.setSub("munkasok",id,"jelenletek",d,{statusz:null,ok:"",frissitve:new Date().toISOString(),ki:userName()})); if(S.jel[id]) delete S.jel[id][d]; toast("Visszavonva"); render(); }catch(e){} };
+function tavolModal(wrap,head){
+  const t=S.tavol||{datum:today(),i:-1,szoveg:""};
+  return wrap(head("Nem dolgoztam",fmtDay(t.datum))+`
+    <div class="sub" style="margin-bottom:12px">Válaszd ki az okát. Így aznap már nem kapsz emlékeztetőt, és az admin is látja.</div>
+    <div class="stack" style="gap:8px">${TAVOL_OKOK.map((o,i)=>`<button class="btn ${t.i===i?"p":"s"} full" style="justify-content:flex-start" onclick="S.tavol.i=${i};render()">${t.i===i?ic("check","sm"):""} ${o[1]}</button>`).join("")}</div>
+    ${t.i>=0?`<div class="fld" style="margin-top:12px"><label class="lbl">${t.i===3?"Mi az oka?":"Megjegyzés (nem kötelező)"}</label><input class="inp" value="${esc(t.szoveg)}" placeholder="${t.i===3?"pl. orvosnál voltam, családi ügy":"pl. holnap jövök"}" oninput="S.tavol.szoveg=this.value"/></div>`:""}
+    <div class="modal-f"><button class="btn s" onclick="closeModal()">Mégse</button><button class="btn p" onclick="tavolMent()">${ic("check","sm")} Mentés</button></div>`);
+}
+function tavolSav(datum){
+  if(!S.user||isAdmin())return ""; jelWatch(S.user.id);
+  const st=(S.jel[S.user.id]||{})[datum]; const ok=((S.jelOk||{})[S.user.id]||{})[datum];
+  if(st) return `<div class="hint" style="margin-bottom:14px">${ic("cal")}<div style="flex:1"><b>${fmtShort(datum)}: ${JEL_NEV[st]||st}</b>${ok?` – ${esc(ok)}`:""}<br/><span class="muted">Ezen a napon nem dolgoztál.</span></div><button class="btn g sm" onclick="tavolVissza('${datum}')">Visszavonás</button></div>`;
+  return "";
+}
 
 // ═══════════════ ÁTTEKINTÉS (admin) ═══════════════
 function vAttekintes(){
@@ -1450,6 +1481,7 @@ function renderModal(){
       <div class="modal-f"><button class="btn s" onclick="closeModal()">Mégse</button><button class="btn p" onclick="prjMent()">${ic("check","sm")} Mentés</button></div>`);
   }
   if(M.type==="reszmunka") return rmModal(M,wrap,head);
+  if(M.type==="tavol") return tavolModal(wrap,head);
   if(M.type==="prjRészlet"){
     const p=S.projektek[M.i]; if(!p)return "";
     const r=koltsegek().filter(x=>x.projekt===p.nev), t=tot(r);
@@ -1818,7 +1850,12 @@ function autoLogin(){
   if(ss.get("ck_admin")==="1"){ S.user={role:"admin"}; S.view="attekintes"; startAdminWatch(); setTimeout(pushCsendesFrissit,2000); return; }
   const s=ls.get("ck_session",null); if(s?.id){ const m=S.munkasok.find(x=>x.id===s.id); if(m && m.aktiv!==false){ S.user={role:"worker",id:m.id,nev:m.nev}; S.view="rogzit"; setTimeout(pushCsendesFrissit,2000); } else ls.del("ck_session"); }
 }
-if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(()=>{});
+  navigator.serviceWorker.addEventListener("message",e=>{ if(e.data?.tavol) tavolKer(); }); }
+// Értesítésből nyitva (?tavol=1): belépés után felajánljuk a távollét megadását
+function tavolKer(){ if(S.user && !isAdmin()){ S.view="rogzit"; S.form=null; render(); if(!(S.jel[S.user.id]||{})[today()]) tavolNyit(today()); } else S._tavolKer=true; }
+if(new URLSearchParams(location.search).get("tavol")){ S._tavolKer=true; history.replaceState(null,"",location.pathname); }
+setInterval(()=>{ if(S._tavolKer && S.user && !isAdmin()){ S._tavolKer=false; setTimeout(tavolKer,600); } },700);
 </script>
 </body>
 </html>

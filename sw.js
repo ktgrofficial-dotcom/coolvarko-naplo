@@ -1,5 +1,5 @@
 // Coolvarko Napló service worker — új kiadásnál a verziót emeld!
-const CACHE = "coolvarko-v2.9.3";
+const CACHE = "coolvarko-v3.0";
 const SHELL = ["./", "./index.html", "./logo.png", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png", "./badge-96.png", "./manifest.json"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {}));
@@ -39,7 +39,8 @@ self.addEventListener("notificationclick", e => {
   e.notification.close();
   const cel = new URL(e.notification.data?.url || "./", self.registration.scope).href;
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(ws => {
-    for (const w of ws) if (w.url.startsWith(self.registration.scope) && "focus" in w) return w.focus();
+    const tavol = cel.includes("tavol=1");
+    for (const w of ws) if (w.url.startsWith(self.registration.scope) && "focus" in w) { if (tavol) w.postMessage({ tavol: 1 }); return w.focus(); }
     return self.clients.openWindow(cel);
   }));
 });
