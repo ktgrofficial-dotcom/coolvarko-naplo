@@ -77,7 +77,7 @@ async function main() {
     const j = await db.doc(`munkasok/${m.id}/jelenletek/${MA}`).get();
     if (j.exists && j.data().statusz) tavol.set(m.id, j.data());
   }));
-  const hianyzik = munkasok.filter(m => !rogzitett.has((m.nev || "").trim()) && !tavol.has(m.id));
+  const hianyzik = munkasok.filter(m => m.emlekezteto !== false && !rogzitett.has((m.nev || "").trim()) && !tavol.has(m.id)); // beugrósok kimaradnak
   console.log(`Aktív: ${munkasok.length}, rögzítve: ${rogzitett.size} név, távol: ${tavol.size}, hiányzik: ${hianyzik.length}, kör: ${k}/${ISM}`);
 
   let ok = 0, kihagy = 0;
@@ -99,7 +99,7 @@ async function main() {
     if (tav.length) body += ` · Távol: ${tav.join(", ")}`;
     for (const t of tokenek.filter(t => t.szerep === "admin")) if (await kuld(t.id, { title: "Mai napló – összesítő", body: body.slice(0, 300), tag: "osszesito-" + MA, url: URL_APP }) === "ok") ok++;
   }
-  const eredmeny = `${ok} értesítés ment ki, ${kihagy} eszközre nem kellett (már rögzítve vagy távol)`;
+  const eredmeny = `${ok} értesítés ment ki, ${kihagy} eszközre nem kellett (rögzített, távol van, vagy nem kér emlékeztetőt)`;
   console.log(eredmeny);
   if (MOD === "most") return; // kézi kiküldés nem lépteti a napi számlálót
   await beallRef.set({ kuldesNap: MA, kuldesKor: k, kuldesIdo: most.toISOString(), utolso: MA, utolsoEredmeny: eredmeny, utolsoFutas: most.toISOString() }, { merge: true });

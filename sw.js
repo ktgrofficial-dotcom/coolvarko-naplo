@@ -1,5 +1,5 @@
 // Coolvarko Napló service worker — új kiadásnál a verziót emeld!
-const CACHE = "coolvarko-v3.0";
+const CACHE = "coolvarko-v3.0.1";
 const SHELL = ["./", "./index.html", "./logo.png", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png", "./badge-96.png", "./manifest.json"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {}));

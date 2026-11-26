@@ -315,7 +315,7 @@ tr.click{cursor:pointer}tr.click:hover td{background:var(--s2)}
 <script>
 "use strict";
 // ═══════════════ ALAPOK ═══════════════
-const VERZIO = "3.0";
+const VERZIO = "3.0.1";
 const S = {
   ready:false, user:null, view:"rogzit", online:navigator.onLine,
   naplo:[], projektek:[], munkasok:[], modositasok:[], adminPin:"1234", kulcsok:{}, kulcsEv:null,
@@ -800,6 +800,7 @@ async function pushCsendesFrissit(){
 function pushKartya(){
   if(S.pushAll===null) pushAllapotFrissit();
   const a=S.pushAll, c=pushCfg(), busy=S.pushBusy;
+  if(!isAdmin() && S.munkasok.find(x=>x.id===S.user?.id)?.emlekezteto===false) return `<div class="card"><div class="h2" style="margin-bottom:4px">Emlékeztető értesítés</div><div class="sub">Neked nincs beállítva napi emlékeztető. Ha mégis kérnéd, szólj az adminnak.</div></div>`;
   const cim = isAdmin() ? "Értesítés ezen az eszközön" : "Emlékeztető értesítés";
   const leir = isAdmin() ? `Napi összesítőt kapsz arról, ki nem rögzített még.` : `Ha ${c.ora}:00-ig nem rögzítetted a napot, a telefonod szól. Ha már beírtad, nem zavar.`;
   let tartalom;
@@ -813,7 +814,7 @@ function pushKartya(){
 }
 // Kis sáv a rögzítés tetején, amíg a munkavállaló nem kapcsolta be
 function pushSav(){
-  if(isAdmin() || S.pushAll!=="ki" || !pushCfg().vapid || !pushCfg().be || ls.get("ck_pushHide",0)>Date.now()) return "";
+  if(isAdmin() || S.munkasok.find(x=>x.id===S.user?.id)?.emlekezteto===false || S.pushAll!=="ki" || !pushCfg().vapid || !pushCfg().be || ls.get("ck_pushHide",0)>Date.now()) return "";
   return `<div class="inst"><div class="av" style="flex-shrink:0">${ic("bell")}</div><div style="flex:1;min-width:0"><b>Kérsz emlékeztetőt?</b><span>Szól a telefon, ha ${pushCfg().ora}:00-ig nem írtad be a napot</span></div><button class="btn p sm" onclick="pushBe()">Kérem</button><button class="btn ic g" title="Most nem" onclick="ls.set('ck_pushHide',Date.now()+14*864e5);render()">${ic("x","sm")}</button></div>`;
 }
 window.pushBeallit = async (k,v) => {
@@ -826,7 +827,8 @@ window.pushKulcsMent = () => { const v=(document.getElementById("vapid").value||
 function pushAdminKartya(){
   const c=pushCfg(), tok=S.pushTokenek||[];
   const dolg=uniq(tok.filter(t=>t.szerep==="worker").map(t=>S.munkasok.find(m=>m.id===t.mvId)?.nev||t.nev)).sort((a,b)=>a.localeCompare(b,"hu"));
-  const aktivok=S.munkasok.filter(m=>m.aktiv!==false).map(m=>m.nev), nincs=aktivok.filter(n=>!dolg.includes(n)).sort((a,b)=>a.localeCompare(b,"hu"));
+  const aktivok=S.munkasok.filter(m=>m.aktiv!==false&&m.emlekezteto!==false).map(m=>m.nev), nincs=aktivok.filter(n=>!dolg.includes(n)).sort((a,b)=>a.localeCompare(b,"hu"));
+  const nemKer=S.munkasok.filter(m=>m.aktiv!==false&&m.emlekezteto===false).map(m=>m.nev).sort((a,b)=>a.localeCompare(b,"hu"));
   const sw=(k,t,sub)=>`<div class="tgl"><div><div style="font-weight:700;font-size:14.5px">${t}</div>${sub?`<div class="sub" style="font-size:12.5px;margin-top:2px">${sub}</div>`:""}</div><button class="switch ${c[k]?"on":""}" onclick="pushBeallit('${k}',${!c[k]})"></button></div>`;
   const ut=c.kuldesNap?`Utoljára: <b>${fmtDate(c.kuldesNap)}</b>, ${c.kuldesKor||1}. emlékeztető${c.utolsoEredmeny?` · ${esc(c.utolsoEredmeny)}`:""}`:c.utolso?`Utoljára kiküldve: <b>${fmtDate(c.utolso)}</b>${c.utolsoEredmeny?` · ${esc(c.utolsoEredmeny)}`:""}`:"Még nem futott a kiküldés.";
   return `<div class="card"><div class="h2" style="margin-bottom:4px">Automatikus emlékeztető</div><div class="sub" style="margin-bottom:12px">Munkanapokon a megadott időponttól óránként szól annak, aki aznap még nem szerepel a naplóban. Az utolsó üzenet arra kéri, hogy ha nem dolgozott, írja be a távollét okát. Szabadságon, betegen, ha jelezte a távollétet, és ünnepnapon nem küld.</div>
@@ -838,7 +840,7 @@ function pushAdminKartya(){
     <div class="sub" style="font-size:12.5px;margin-top:6px">${(c.ismetles||3)>1?`${c.ora}:00-tól ${c.ora+(c.ismetles||3)-1}:00-ig óránként, legfeljebb ${c.ismetles||3}×`:`${c.ora}:00 után egyszer`}</div>
     ${sw("szombat","Szombaton is","Ha szombaton is szokott munka lenni")}
     ${sw("adminOsszesito","Összesítő nekem","Az utolsó emlékeztető után: ki nem rögzített, és ki jelezte, hogy nem dolgozott")}
-    <div class="hint" style="margin-top:12px">${ic("bell")}<div>${ut}<br/>Kéri (${dolg.length}): ${dolg.length?esc(dolg.join(", ")):"még senki"}${nincs.length?`<br/><span class="muted">Még nem kapcsolta be: ${esc(nincs.join(", "))}</span>`:""}</div></div>
+    <div class="hint" style="margin-top:12px">${ic("bell")}<div>${ut}<br/>Kéri (${dolg.length}): ${dolg.length?esc(dolg.join(", ")):"még senki"}${nincs.length?`<br/><span class="muted">Még nem kapcsolta be: ${esc(nincs.join(", "))}</span>`:""}${nemKer.length?`<br/><span class="muted">Nem kap emlékeztetőt (beugrós): ${esc(nemKer.join(", "))}</span>`:""}</div></div>
     <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;font-size:14px">Webes push kulcs ${c.vapid?"<span class='muted'>(megadva)</span>":"<span style='color:var(--amb)'>(hiányzik)</span>"}</summary>
       <div class="sub" style="margin:8px 0">Firebase konzol → Projekt beállításai → Cloud Messaging → Webes konfiguráció → Web Push tanúsítványok → „Kulcspár” (a hosszú nyilvános kulcs).</div>
       <input id="vapid" class="inp" value="${esc(c.vapid||"")}" placeholder="B… kezdetű kulcs" autocomplete="off" spellcheck="false"/>
@@ -1117,7 +1119,7 @@ function vAttekintes(){
   const p=per("att"), rows=koltsegek().filter(r=>inPer(r.datum,p)), t=tot(rows);
   const napok=uniq(rows.map(r=>r.datum)).length;
   const maiNevek=uniq(S.naplo.filter(n=>n.datum===today()).flatMap(n=>(n.brigad||[]).map(w=>(w.nev||"").trim())));
-  const hianyzik=S.munkasok.filter(m=>m.aktiv!==false && !maiNevek.includes(m.nev)).filter(m=>!(S.jel[m.id]||{})[today()]);
+  const hianyzik=S.munkasok.filter(m=>m.aktiv!==false && m.emlekezteto!==false && !maiNevek.includes(m.nev)).filter(m=>!(S.jel[m.id]||{})[today()]);
   const byP=sumBy(rows,"projekt").sort((a,b)=>b.ossz-a.ossz), byW=sumBy(rows,"nev").sort((a,b)=>b.ora-a.ora);
   const maxP=Math.max(1,...byP.map(x=>x.ossz)), maxW=Math.max(1,...byW.map(x=>x.ora));
   const wd=parseD(today()).getDay();
@@ -1355,11 +1357,11 @@ window.mvSzerk = i => {
   const m=i==null?null:S.munkasok[i];
   const ev=today().slice(0,4);
   if(m){ const bs=m.besorolas||(String(m.tipus||"").endsWith("seged")?"seged":"szak");
-    S.mEdit={...m,aktiv:m.aktiv!==false,brigadTagok:(m.brigadTagok||[]).map(t=>({nev:t.nev,datum:t.datum||""})),ujPin:"",regiNev:m.nev,
+    S.mEdit={...m,aktiv:m.aktiv!==false,emlekezteto:m.emlekezteto!==false,brigadTagok:(m.brigadTagok||[]).map(t=>({nev:t.nev,datum:t.datum||""})),ujPin:"",regiNev:m.nev,
       jogviszony:m.jogviszony||(isAlkalmiM(m)?"alkalmi":"bejelentett"),besorolas:bs,berKat:m.berKat||(bs==="szak"?"garber":"minber"),munkaido:Number(m.munkaido||8),
       egyeniBrutto:m.egyeniBrutto||"",szjaMentes:!!m.szjaMentes,gyerekek:Number(m.gyerekek||0),mashol:m.masholNap?.[ev]||0,ujBesorolas:!m.jogviszony,szochoKedv:m.szochoKedv||"nincs",kedvKezd:m.kedvKezd||"",k2:m.k2?{...m.k2}:null,szjaOk:m.szjaOk||(m.szjaMentes?"egyeb":"nincs"),szuletes:m.szuletes||"",valtTipus:"javitas",valtTol:today(),kilepes:m.kilepes||"",
       evMod:m.evMod||"atalany",evAllas:m.evAllas||"fo",kh:Number(m.kh||80),evMinAlap:m.evMinAlap||"minber",evFix:m.evFix??20000,evKezi:m.evKezi||"",evKiszamlaz:m.evKiszamlaz===true}; }
-  else S.mEdit={nev:"",szakma:"",telefon:"",aktiv:true,jogviszony:"alkalmi",besorolas:"szak",berKat:"garber",munkaido:8,egyeniBrutto:"",szjaMentes:false,gyerekek:0,mashol:0,szochoKedv:"nincs",kedvKezd:"",k2:null,evMod:"atalany",evAllas:"fo",kh:80,evMinAlap:"minber",evFix:20000,evKezi:"",evKiszamlaz:false,napidij:35000,berErvenyes:today(),jelenletKovetes:false,szabKeret:20,brigadVezeto:false,brigadPotlek:1000,brigadTagok:[],ujPin:""};
+  else S.mEdit={nev:"",szakma:"",telefon:"",aktiv:true,emlekezteto:true,jogviszony:"alkalmi",besorolas:"szak",berKat:"garber",munkaido:8,egyeniBrutto:"",szjaMentes:false,gyerekek:0,mashol:0,szochoKedv:"nincs",kedvKezd:"",k2:null,evMod:"atalany",evAllas:"fo",kh:80,evMinAlap:"minber",evFix:20000,evKezi:"",evKiszamlaz:false,napidij:35000,berErvenyes:today(),jelenletKovetes:false,szabKeret:20,brigadVezeto:false,brigadPotlek:1000,brigadTagok:[],ujPin:""};
   openModal("mv");
 };
 window.mvMent = async () => {
@@ -1376,7 +1378,7 @@ window.mvMent = async () => {
     ...(e.jogviszony==="ev"?{evMod:e.evMod,evAllas:e.evAllas,kh:Number(e.kh)||80,evMinAlap:e.evMinAlap,evFix:Number(e.evFix)||0,evKezi:Number(e.evKezi)||0,evKiszamlaz:e.evKiszamlaz===true}:{}),
     napidij:Number(e.napidij)||0,
     berErvenyes:e.berErvenyes||today(), berTipus:e.berTipus||"napi", oraber:Number(e.oraber)||0,
-    jelenletKovetes:!!e.jelenletKovetes, szabKeret:Number(e.szabKeret)||20,
+    jelenletKovetes:!!e.jelenletKovetes, szabKeret:Number(e.szabKeret)||20, emlekezteto:e.emlekezteto!==false,
     brigadVezeto:!!e.brigadVezeto, brigadPotlek:e.brigadVezeto?(Number(e.brigadPotlek)||0):0,
     brigadTagok:e.brigadVezeto?(e.brigadTagok||[]).filter(t=>t.nev).map(t=>({nev:t.nev,datum:t.datum||""})):[]};
   if(e.jogviszony==="bejelentett"){ Object.assign(data,{szjaOk:e.szjaOk||"nincs",szjaMentes:(e.szjaOk||"nincs")!=="nincs",szuletes:e.szuletes||"",szochoKedv:e.szochoKedv||"nincs",kedvKezd:e.kedvKezd||"",k2:e.k2?{berKat:e.k2.berKat||"minber",munkaido:Number(e.k2.munkaido)||4,egyeniBrutto:Number(e.k2.egyeniBrutto)||0,szochoKedv:e.k2.szochoKedv||"nincs",kedvKezd:e.k2.kedvKezd||""}:null}); }
@@ -1519,6 +1521,7 @@ function mvForm(){
     <div class="sep"></div>
     ${sw("jelenletKovetes","Jelenléti nyilvántartás","Szabadság, betegség, hiányzás követése naptárban")}
     ${e.jelenletKovetes?`<div class="fld" style="max-width:220px"><label class="lbl">Éves szabadságkeret (nap)</label>${inp("szabKeret","20","number",'inputmode="numeric"')}</div>`:""}
+    ${sw("emlekezteto","Napi emlékeztető","Értesítést kap, ha nem rögzít, és szerepel az összesítőben. Kapcsold ki annál, aki csak néha ugrik be.")}
     ${sw("brigadVezeto","Brigádvezető","Pótlékot kap azokon a napokon, amikor a megjelölt munkavállalók vele dolgoznak")}
     ${e.brigadVezeto?`<div class="fld" style="max-width:220px"><label class="lbl">Pótlék, Ft / fő / nap</label>${inp("brigadPotlek","1000","number",'inputmode="numeric" step="100"')}</div>
       <label class="lbl">Kik után jár?</label>
