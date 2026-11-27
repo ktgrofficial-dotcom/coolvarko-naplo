@@ -10,7 +10,7 @@ on:
       mod:
         description: "proba = próbaüzenet mindenkinek · most = utolsó emlékeztető azonnal (teszt) · normal = mint ütemezve"
         required: true
-        default: "proba"
+        default: "normal"
         type: choice
         options: [proba, most, normal]
 
